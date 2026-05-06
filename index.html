@@ -134,15 +134,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div id="km-step1">
     <div class="photo-area" onclick="document.getElementById('foto-input').click()">
       <div class="photo-icon">📷</div>
-      <div class="photo-label">Tirar foto do velocímetro</div>
+      <div class="photo-label">Tirar foto do odômetro</div>
       <div class="photo-sublabel">O app lê o KM automaticamente</div>
     </div>
     <input type="file" id="foto-input" accept="image/*" capture="environment" style="display:none" onchange="processarFoto(this)">
-    <div class="ai-loading" id="ai-loading"><span class="spinner"></span>Lendo velocímetro...</div>
+    <div class="ai-loading" id="ai-loading"><span class="spinner"></span>Lendo odômetro...</div>
     <button class="btn-secondary" onclick="toggleManual()" style="margin-top:0">✏️ Inserir KM manualmente</button>
     <div id="km-input-manual" style="display:none;margin-top:12px;">
       <div class="field">
-        <label>KM do velocímetro</label>
+        <label>KM do odômetro</label>
         <input type="number" id="km-manual" placeholder="ex: 62633" inputmode="numeric" min="0" oninput="kmManualChanged()">
       </div>
     </div>
@@ -151,7 +151,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <!-- PASSO 2: CONFIRMAR (aparece após leitura) -->
   <div id="km-step2" style="display:none">
     <div class="km-confirm-box" id="km-confirm-box">
-      <div class="km-confirm-label">KM lido do velocímetro</div>
+      <div class="km-confirm-label">KM lido do odômetro</div>
       <input type="number" id="km-confirmado" class="km-confirm-input" inputmode="numeric" min="0">
       <div class="km-confirm-sub">Corrija se necessário</div>
     </div>
@@ -537,18 +537,20 @@ function drawCharts(wc,all){
 }
 
 function downloadExcel(wb,fname){
-  try{
-    // Try native writeFile first (works on desktop)
-    XLSX.writeFile(wb,fname);
-  }catch(e){
-    // Fallback for Safari iOS - use blob + anchor
-    const wbout=XLSX.write(wb,{bookType:'xlsx',type:'array'});
-    const blob=new Blob([wbout],{type:'application/octet-stream'});
-    const url=URL.createObjectURL(blob);
+  // Detect Safari iOS - XLSX.writeFile silently fails on Safari, must use blob
+  const isSafari=/^((?!chrome|android).)*safari/i.test(navigator.userAgent)||
+    (/iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream);
+  if(isSafari){
+    const wbout=XLSX.write(wb,{bookType:'xlsx',type:'base64'});
+    const url='data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,'+wbout;
     const a=document.createElement('a');
-    a.href=url;a.download=fname;
-    document.body.appendChild(a);a.click();
-    setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},1000);
+    a.href=url;
+    a.download=fname;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>document.body.removeChild(a),500);
+  } else {
+    XLSX.writeFile(wb,fname);
   }
 }
 
