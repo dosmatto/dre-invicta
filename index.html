@@ -15,6 +15,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 #login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:32px;text-align:center;}
 .login-sub{font-size:14px;color:var(--text2);margin-bottom:40px;line-height:1.5;}
 .login-loading{margin-top:20px;color:var(--text2);font-size:14px;display:none;}
+.login-divider{display:flex;align-items:center;gap:10px;color:var(--text3);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin:16px 0 14px;}
+.login-divider:before,.login-divider:after{content:"";height:1px;background:var(--border);flex:1;}
+.btn-google{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;padding:14px;background:#fff;border:1.5px solid #ddd;border-radius:var(--rsm);font-size:15px;font-weight:600;cursor:pointer;color:#333;font-family:inherit;box-shadow:0 2px 8px rgba(0,0,0,.08);}
+.btn-google:active{opacity:.8;}
+.btn-google svg{width:20px;height:20px;flex-shrink:0;}
 #app-screen{display:none;}
 .header{background:var(--surface);border-bottom:0.5px solid var(--border);padding:16px 16px 0;position:sticky;top:0;z-index:100;}
 .header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
@@ -117,13 +122,32 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </head>
 <body>
 <div id="login-screen">
-  <div style="position:absolute;top:12px;right:16px;font-size:11px;color:var(--text3);font-weight:500;">v1.7</div>
+  <div style="position:absolute;top:12px;right:16px;font-size:11px;color:var(--text3);font-weight:500;">v1.8</div>
   <div class="login-sub">Controle de abastecimento, quilometragem e despesas.<br>Dados salvos na nuvem com segurança.</div>
   <div style="width:100%;max-width:320px;">
+    <button class="btn-google" onclick="entrarComGoogle()">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.24 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06L5.84 9.9C6.71 7.3 9.14 5.38 12 5.38z"/>
+      </svg>
+      Entrar com Google
+    </button>
+    <div class="login-divider">ou</div>
     <div class="field"><label>E-mail</label><input type="email" id="login-email" placeholder="seu@email.com" inputmode="email" autocomplete="email"></div>
     <div class="field"><label>Senha</label><input type="password" id="login-senha" placeholder="sua senha" autocomplete="current-password"></div>
     <button class="btn-primary" onclick="fazerLogin()" style="margin-top:4px;">Entrar</button>
     <button class="btn-secondary" onclick="criarConta()" style="margin-top:8px;font-size:14px;">Criar conta nova</button>
+    <button class="btn-google" onclick="entrarComGoogle()" style="margin-top:14px;box-shadow:none;">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.24 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.84z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06L5.84 9.9C6.71 7.3 9.14 5.38 12 5.38z"/>
+      </svg>
+      Entrar com Google
+    </button>
   </div>
   <div class="login-loading" id="login-loading"><span class="spinner"></span> Entrando...</div>
 </div>
@@ -286,7 +310,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 <script type="module">
 import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import{createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,indexedDBLocalPersistence,initializeAuth}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import{GoogleAuthProvider,createUserWithEmailAndPassword,signInWithEmailAndPassword,signInWithPopup,signInWithRedirect,getRedirectResult,signOut,onAuthStateChanged,indexedDBLocalPersistence,initializeAuth}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import{getFirestore,collection,doc,addDoc,updateDoc,deleteDoc,query,orderBy,onSnapshot,serverTimestamp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const firebaseConfig={
@@ -301,6 +325,8 @@ const firebaseConfig={
 const app=initializeApp(firebaseConfig);
 const auth=initializeAuth(app,{persistence:indexedDBLocalPersistence});
 const db=getFirestore(app);
+const googleProvider=new GoogleAuthProvider();
+googleProvider.setCustomParameters({prompt:'select_account'});
 const AVG_CONS=8.2;
 const NOMES_MES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
@@ -342,6 +368,25 @@ window.fazerLogin=async()=>{
   }
 };
 
+window.entrarComGoogle=async()=>{
+  document.getElementById('login-loading').style.display='block';
+  try{
+    await signInWithPopup(auth,googleProvider);
+  }catch(e){
+    if(e.code==='auth/popup-blocked'||e.code==='auth/cancelled-popup-request'){
+      try{
+        await signInWithRedirect(auth,googleProvider);
+      }catch(err){
+        document.getElementById('login-loading').style.display='none';
+        showAuthError(err);
+      }
+      return;
+    }
+    document.getElementById('login-loading').style.display='none';
+    showAuthError(e);
+  }
+};
+
 window.criarConta=async()=>{
   const email=document.getElementById('login-email').value.trim();
   const senha=document.getElementById('login-senha').value;
@@ -358,6 +403,18 @@ window.criarConta=async()=>{
     else showToast('⚠️ Erro: '+e.code);
   }
 };
+
+getRedirectResult(auth).catch(e=>{
+  document.getElementById('login-loading').style.display='none';
+  showAuthError(e);
+});
+
+function showAuthError(e){
+  if(e.code==='auth/unauthorized-domain')showToast('⚠️ Autorize este domínio no Firebase para login Google');
+  else if(e.code==='auth/operation-not-allowed')showToast('⚠️ Ative o provedor Google no Firebase Console');
+  else if(e.code==='auth/popup-closed-by-user')showToast('Login com Google cancelado');
+  else showToast('⚠️ Erro: '+(e.code||'login'));
+}
 
 window.fazerLogout=async()=>{
   if(!confirm('Deseja sair da conta?'))return;
