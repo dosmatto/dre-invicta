@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teste Login v1</title>
+<style>
+body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:20px;background:#111;color:#fff;}
+input{width:100%;max-width:300px;padding:12px;margin:6px 0;border-radius:8px;border:1px solid #444;background:#222;color:#fff;font-size:16px;}
+button{width:100%;max-width:300px;padding:14px;margin:6px 0;border-radius:8px;border:none;background:#1D9E75;color:#fff;font-size:16px;cursor:pointer;}
+#msg{margin-top:16px;font-size:14px;color:#aaa;}
+</style>
+</head>
+<body>
+<h2>DRE Invicta — Teste Login</h2>
+<input type="email" id="email" placeholder="E-mail">
+<input type="password" id="senha" placeholder="Senha (min 6 chars)">
+<button onclick="entrar()">Entrar</button>
+<button onclick="criar()" style="background:#378ADD;">Criar Conta</button>
+<div id="msg">Aguardando...</div>
+
+<script type="module">
+import{initializeApp}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import{initializeAuth,indexedDBLocalPersistence,createUserWithEmailAndPassword,signInWithEmailAndPassword,onAuthStateChanged}from'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+const app=initializeApp({
+  apiKey:"AIzaSyAbNZRwLwik2ZmWGE_KLgU5t5atIuUVzmU",
+  authDomain:"abastecimento-61a4f.firebaseapp.com",
+  projectId:"abastecimento-61a4f",
+  storageBucket:"abastecimento-61a4f.firebasestorage.app",
+  messagingSenderId:"486642766983",
+  appId:"1:486642766983:web:92e972c4a1d717b9dd5422"
+});
+const auth=initializeAuth(app,{persistence:indexedDBLocalPersistence});
+const msg=e=>document.getElementById('msg').textContent=e;
+
+onAuthStateChanged(auth,u=>{
+  if(u)msg('Logado como: '+u.email);
+  else msg('Não logado');
+});
+
+window.entrar=async()=>{
+  const e=document.getElementById('email').value;
+  const s=document.getElementById('senha').value;
+  msg('Entrando...');
+  try{
+    await signInWithEmailAndPassword(auth,e,s);
+    msg('Login OK!');
+  }catch(err){msg('Erro: '+err.code);}
+};
+
+window.criar=async()=>{
+  const e=document.getElementById('email').value;
+  const s=document.getElementById('senha').value;
+  msg('Criando conta...');
+  try{
+    await createUserWithEmailAndPassword(auth,e,s);
+    msg('Conta criada!');
+  }catch(err){msg('Erro: '+err.code);}
+};
+</script>
+</body>
+</html>
