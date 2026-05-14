@@ -123,7 +123,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </head>
 <body>
 <div id="login-screen">
-  <div style="position:absolute;top:12px;right:16px;font-size:11px;color:var(--text3);font-weight:500;">v2.2</div>
+  <div style="position:absolute;top:12px;right:16px;font-size:11px;color:var(--text3);font-weight:500;">v2.4</div>
   <div class="login-sub">Controle de abastecimento, quilometragem e despesas.<br>Dados salvos na nuvem com segurança.</div>
   <div style="width:100%;max-width:320px;">
     <button class="btn-google" onclick="entrarComGoogle()">
@@ -263,7 +263,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <button class="desp-add-btn" onclick="abrirFormDespesa('part')">+ Adicionar gasto particular</button>
         <div class="desp-total"><span>TOTAL PARTICULAR</span><span id="total-part-footer">R$ 0,00</span></div>
       </div>
-      <button class="btn-secondary" onclick="exportarDespesasPDF()" style="margin-top:4px;">📄 Exportar Relatório PDF</button>
+      <div style="margin-top:4px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button class="btn-secondary" onclick="exportarDespesasPDF()" style="margin-top:0;">📄 Relatório PDF</button>
+        <button class="btn-secondary" onclick="exportarFotosDespesasPDF()" style="margin-top:0;">🧾 Fotos do mês</button>
+      </div>
     </div>
 
     <div id="sec-historico" class="section" style="display:none">
@@ -296,7 +299,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <button class="btn-primary" onclick="abrirFormVeiculo()" style="margin-top:8px;">+ Adicionar veículo</button>
     </div>
   </div>
-  <div class="app-version-footer">DRE Invicta v2.2</div>
+  <div class="app-version-footer">DRE Invicta v2.4</div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -979,6 +982,35 @@ window.exportarDespesasPDF=async()=>{
   const totalGeral=doMes.reduce((a,d)=>a+d.valor,0);
   const totalReembolso=(totals.pedagio||0)+(totals.part||0);
   const totalCorp=totals.corp||0;
+  const kmDoMes=kmRecords.filter(r=>r.data&&r.data.startsWith(mesDespesaAtual));
+  const kmByDay={};
+  kmDoMes.forEach(r=>{if(!kmByDay[r.data])kmByDay[r.data]={};kmByDay[r.data][r.tipo]=r;});
+  const kmDias=Object.keys(kmByDay).sort().map(d=>{
+    const ini=kmByDay[d].inicial||null;
+    const fin=kmByDay[d].final||null;
+    const rod=(ini&&fin)?Math.max(0,fin.km-ini.km):null;
+    return{data:d,ini,fin,rod};
+  });
+  const totalKm=kmDias.reduce((a,d)=>a+(d.rod||0),0);
+  const kmRows=kmDias.map(d=>{
+    const[yy,mm,dd]=d.data.split('-');
+    return`<div class="km-report-row">
+      <div class="km-date">${dd}/${mm}/${yy}</div>
+      <div class="km-cell"><span>Inicial</span><strong>${d.ini?d.ini.km.toLocaleString('pt-BR'):'—'}</strong></div>
+      <div class="km-cell"><span>Final</span><strong>${d.fin?d.fin.km.toLocaleString('pt-BR'):'—'}</strong></div>
+      <div class="km-total-cell">${d.rod!==null?d.rod.toLocaleString('pt-BR')+' km':'—'}</div>
+    </div>`;
+  }).join('');
+  const kmSection=`<section class="category-card km-card">
+    <div class="category-head" style="border-color:#475569">
+      <div>
+        <div class="category-kicker" style="color:#475569">Quilometragem do período</div>
+        <h2>KM por dia</h2>
+      </div>
+      <div class="category-total" style="background:#EEF2F7;color:#334155">${totalKm.toLocaleString('pt-BR')} km</div>
+    </div>
+    <div class="km-list">${kmRows||'<div class="empty-report">Nenhum KM registrado neste mês.</div>'}</div>
+  </section>`;
   let blocosHTML='';
   for(const cat of cats){
     const itens=doMes.filter(d=>d.cat===cat.id);
@@ -1022,7 +1054,7 @@ window.exportarDespesasPDF=async()=>{
     h1{font-size:30px;line-height:1.05;margin:0 0 8px;font-weight:800;letter-spacing:0;}
     .hero-sub{color:#c7d6d0;font-size:12px;}
     .period-pill{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:700;white-space:nowrap;}
-    .summary-grid{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:10px;margin-bottom:18px;}
+    .summary-grid{display:grid;grid-template-columns:1.25fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:18px;}
     .summary-card{border:1px solid #e3e8e5;border-radius:14px;padding:14px 14px;background:#fff;}
     .summary-card.primary{background:#e8f7f1;border-color:#bfe6d7;}
     .summary-label{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#6b756f;font-weight:800;margin-bottom:6px;}
@@ -1043,6 +1075,14 @@ window.exportarDespesasPDF=async()=>{
     .row-receipt{display:flex;justify-content:flex-end;}
     .receipt-img{width:58px;height:58px;object-fit:cover;border-radius:10px;border:1px solid #d9dfdc;}
     .receipt-empty{width:58px;height:58px;border-radius:10px;border:1px dashed #cbd3cf;color:#9aa39e;display:flex;align-items:center;justify-content:center;text-align:center;font-size:8px;text-transform:uppercase;font-weight:800;}
+    .km-list{padding:8px 14px 14px;}
+    .km-report-row{display:grid;grid-template-columns:110px 1fr 1fr 110px;gap:10px;align-items:center;border-bottom:1px solid #eef1ef;padding:10px 0;}
+    .km-report-row:last-child{border-bottom:none;}
+    .km-date{font-size:12px;font-weight:850;color:#17201c;}
+    .km-cell{background:#f7f9f8;border:1px solid #edf1ef;border-radius:10px;padding:8px 10px;}
+    .km-cell span{display:block;font-size:8px;text-transform:uppercase;letter-spacing:.1em;color:#7a847f;font-weight:800;margin-bottom:2px;}
+    .km-cell strong{font-size:12px;color:#17201c;}
+    .km-total-cell{text-align:right;font-size:13px;font-weight:900;color:#0f6e56;}
     .empty-report{padding:20px 8px;color:#8a948f;font-size:12px;text-align:center;}
     .footer-note{margin-top:18px;border-top:1px solid #e6ebe8;padding-top:12px;color:#7c8781;font-size:10px;display:flex;justify-content:space-between;gap:10px;}
     @media print{body{background:#fff;}.page{padding:0;}.report-hero,.summary-card,.category-card{box-shadow:none;}.category-card{margin-bottom:12px;}}
@@ -1060,10 +1100,93 @@ window.exportarDespesasPDF=async()=>{
       <div class="summary-card primary"><div class="summary-label">Total geral</div><div class="summary-value">R$ ${totalGeral.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div></div>
       <div class="summary-card"><div class="summary-label">Reembolso</div><div class="summary-value">R$ ${totalReembolso.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div></div>
       <div class="summary-card"><div class="summary-label">Corporativo</div><div class="summary-value">R$ ${totalCorp.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div></div>
+      <div class="summary-card"><div class="summary-label">KM rodados</div><div class="summary-value">${totalKm.toLocaleString('pt-BR')} km</div></div>
       <div class="summary-card"><div class="summary-label">Lançamentos</div><div class="summary-value">${doMes.length}</div></div>
     </section>
+    ${kmSection}
     ${blocosHTML}
     <div class="footer-note"><span>Relatório gerado pelo app DRE Invicta</span><span>${nomeMes}</span></div>
+  </main></body></html>`;
+  printHTML(html);
+};
+
+window.exportarFotosDespesasPDF=async()=>{
+  const[y,m]=mesDespesaAtual.split('-').map(Number);
+  const nomeMes=NOMES_MES[m-1]+' '+y;
+  const catInfo={
+    pedagio:{titulo:'Pedágio',cor:'#0F8A67'},
+    corp:{titulo:'Corporativo',cor:'#2563EB'},
+    part:{titulo:'Particular',cor:'#B45309'}
+  };
+  const fotos=despesas
+    .filter(d=>d.data&&d.data.startsWith(mesDespesaAtual)&&d.foto&&d.foto.length>100)
+    .sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+  if(!fotos.length){showToast('Nenhuma foto de despesa neste mês');return;}
+  showToast('Montando fotos do mês...');
+  const totalFotos=fotos.length;
+  const totalValor=fotos.reduce((a,d)=>a+(d.valor||0),0);
+  const cards=await Promise.all(fotos.map(async(d,idx)=>{
+    const[yy,mm,dd]=d.data.split('-');
+    const cat=catInfo[d.cat]||{titulo:'Despesa',cor:'#475569'};
+    const foto=await resizeDataURL(d.foto,1100,.78);
+    return`<article class="receipt-card">
+      <div class="receipt-photo-wrap"><img src="${foto}" alt="Comprovante ${idx+1}"></div>
+      <div class="receipt-caption">
+        <div class="receipt-topline">
+          <span class="receipt-number">${String(idx+1).padStart(2,'0')}</span>
+          <span class="receipt-cat" style="color:${cat.cor};background:${hexToSoftBg(cat.cor)}">${cat.titulo}</span>
+        </div>
+        <div class="receipt-desc">${escapeHTML(d.desc||'Sem descrição')}</div>
+        <div class="receipt-meta"><span>${dd}/${mm}/${yy}</span><span>R$ ${(d.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+      </div>
+    </article>`;
+  }));
+  const nomeUsuario=escapeHTML(currentUser.displayName||currentUser.email||'DRE Invicta');
+  const hoje=new Date().toLocaleDateString('pt-BR');
+  const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Comprovantes ${nomeMes}</title>
+  <style>
+    @page{size:A4;margin:12mm;}
+    *{box-sizing:border-box;}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;margin:0;background:#f5f7f6;color:#17201c;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    .page{max-width:960px;margin:0 auto;background:#fff;min-height:100vh;padding:24px;}
+    .hero{background:#101f1a;color:#fff;border-radius:18px;padding:22px 24px;margin-bottom:16px;display:flex;justify-content:space-between;gap:24px;align-items:flex-start;}
+    .brand{font-size:11px;text-transform:uppercase;letter-spacing:.16em;color:#94d8be;font-weight:850;margin-bottom:18px;}
+    h1{font-size:27px;line-height:1.05;margin:0 0 7px;font-weight:850;}
+    .sub{font-size:12px;color:#c7d6d0;}
+    .period{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:800;white-space:nowrap;}
+    .summary{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;}
+    .sum-card{border:1px solid #e3e8e5;border-radius:14px;padding:13px 14px;background:#fff;}
+    .sum-label{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#6f7a74;font-weight:850;margin-bottom:5px;}
+    .sum-value{font-size:18px;font-weight:900;color:#13201a;}
+    .receipt-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+    .receipt-card{border:1px solid #e2e8e4;border-radius:16px;overflow:hidden;background:#fff;page-break-inside:avoid;}
+    .receipt-photo-wrap{height:300px;background:#f0f3f1;display:flex;align-items:center;justify-content:center;border-bottom:1px solid #e8eeea;}
+    .receipt-photo-wrap img{width:100%;height:100%;object-fit:contain;}
+    .receipt-caption{padding:12px 13px 13px;}
+    .receipt-topline{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
+    .receipt-number{width:28px;height:28px;border-radius:8px;background:#eef2f0;color:#65716b;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;}
+    .receipt-cat{border-radius:999px;padding:5px 9px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;font-weight:900;}
+    .receipt-desc{font-size:13px;font-weight:800;margin-bottom:7px;color:#17201c;}
+    .receipt-meta{display:flex;justify-content:space-between;gap:10px;color:#68746e;font-size:11px;font-weight:800;}
+    .footer-note{margin-top:16px;border-top:1px solid #e6ebe8;padding-top:10px;color:#7c8781;font-size:10px;display:flex;justify-content:space-between;gap:10px;}
+    @media print{body{background:#fff;}.page{padding:0;}.hero{margin-bottom:12px;}.receipt-grid{gap:10px;}.receipt-photo-wrap{height:265px;}}
+  </style></head><body>
+  <main class="page">
+    <section class="hero">
+      <div>
+        <div class="brand">DRE Invicta</div>
+        <h1>Comprovantes do mês</h1>
+        <div class="sub">${nomeUsuario} · Gerado em ${hoje}</div>
+      </div>
+      <div class="period">${nomeMes}</div>
+    </section>
+    <section class="summary">
+      <div class="sum-card"><div class="sum-label">Comprovantes</div><div class="sum-value">${totalFotos}</div></div>
+      <div class="sum-card"><div class="sum-label">Valor com foto</div><div class="sum-value">R$ ${totalValor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div></div>
+      <div class="sum-card"><div class="sum-label">Período</div><div class="sum-value">${nomeMes}</div></div>
+    </section>
+    <section class="receipt-grid">${cards.join('')}</section>
+    <div class="footer-note"><span>Somente fotos de despesas com comprovante anexado</span><span>${nomeMes}</span></div>
   </main></body></html>`;
   printHTML(html);
 };
@@ -1252,6 +1375,10 @@ function fmtDate(d){if(!d)return'';const[y,m,day]=d.split('-');return`${day}/${m
 function fmtShort(d){if(!d)return'';const[,m,day]=d.split('-');return`${day}/${m}`;}
 function escapeHTML(v){return String(v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 function escapeAttr(v){return escapeHTML(v);}
+function hexToSoftBg(hex){
+  const map={'#0F8A67':'#E8F7F1','#2563EB':'#EAF1FF','#B45309':'#FFF3E4','#475569':'#EEF2F7'};
+  return map[String(hex).toUpperCase()]||'#EEF2F7';
+}
 </script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
