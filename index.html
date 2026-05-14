@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-app-version="2.6">
+<html lang="pt-BR" data-app-version="2.7">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -126,7 +126,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </head>
 <body>
 <div id="login-screen">
-  <div id="login-version" style="position:absolute;top:12px;right:16px;font-size:11px;color:var(--text3);font-weight:500;">v2.6</div>
+  <div id="login-version" style="position:absolute;top:12px;right:16px;font-size:11px;color:var(--text3);font-weight:500;">v2.7</div>
   <div class="login-sub">Controle de abastecimento, quilometragem e despesas.<br>Dados salvos na nuvem com segurança.</div>
   <div style="width:100%;max-width:320px;">
     <button class="btn-google" onclick="entrarComGoogle()">
@@ -200,7 +200,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
     <div id="sec-km" class="section" style="display:none">
       <br>
-      <button class="btn-secondary" onclick="exportarKmCSV()" style="margin:0 0 14px;">⬇ Exportar CSV KM</button>
+      <div class="mes-selector">
+        <button onclick="mudarMesKm(-1)">‹</button>
+        <span id="km-mes-label">—</span>
+        <button onclick="mudarMesKm(1)">›</button>
+      </div>
+      <div class="section-label">Relatórios de KM</div>
+      <div style="margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button class="btn-secondary" onclick="exportarKmCSV()" style="margin-top:0;">⬇ CSV KM</button>
+        <button class="btn-secondary" onclick="exportarKmPDF()" style="margin-top:0;">📄 PDF KM</button>
+      </div>
       <div class="row2">
         <div class="field"><label>Data</label><input type="date" id="km-data"></div>
         <div class="field"><label>Hora</label><input type="time" id="km-hora"></div>
@@ -237,7 +246,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <button class="btn-secondary" onclick="resetKmStep()" style="margin-top:8px;">↩ Nova leitura</button>
       </div>
       <br>
-      <div class="section-label">Registros do mês atual</div>
+      <div class="section-label">Registros do mês selecionado</div>
       <div id="km-lista"><div class="app-loading"><div class="spinner"></div>Carregando...</div></div>
     </div>
 
@@ -303,7 +312,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <button class="btn-primary" onclick="abrirFormVeiculo()" style="margin-top:8px;">+ Adicionar veículo</button>
     </div>
   </div>
-  <div id="app-version-footer" class="app-version-footer">DRE Invicta v2.6</div>
+  <div id="app-version-footer" class="app-version-footer">DRE Invicta v2.7</div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -326,7 +335,7 @@ const app=initializeApp(firebaseConfig);
 const auth=initializeAuth(app,{persistence:indexedDBLocalPersistence,popupRedirectResolver:browserPopupRedirectResolver});
 const db=getFirestore(app);
 const googleProvider=new GoogleAuthProvider();
-const APP_VERSION=document.documentElement.dataset.appVersion||'2.5';
+const APP_VERSION=document.documentElement.dataset.appVersion||'2.7';
 const AVG_CONS=8.2;
 const NOMES_MES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
@@ -340,6 +349,7 @@ let tipoKm='inicial';
 let kmLidoFoto=null;
 let c1=null,c2=null,c3=null;
 let unsubAbast=null,unsubKm=null,unsubDesp=null,unsubVeic=null;
+let mesKmAtual=new Date().toISOString().slice(0,7);
 let mesDespesaAtual=new Date().toISOString().slice(0,7);
 
 function setVersionLabels(){
@@ -587,6 +597,7 @@ window.salvarKmDia=async()=>{
   if(existente)await deleteDoc(doc(db,'users',currentUser.uid,'kmdiario',existente._docId));
   await addDoc(kmRef(),{data,hora,km,tipo:tipoKm,criadoEm:serverTimestamp()});
   showToast('✓ KM '+tipoKm+' salvo: '+km.toLocaleString('pt-BR'));
+  mesKmAtual=data.slice(0,7);
   resetKmStep();
   const nn=new Date();
   document.getElementById('km-data').value=nn.toISOString().split('T')[0];
@@ -596,18 +607,11 @@ window.salvarKmDia=async()=>{
 
 function renderKmLista(){
   const el=document.getElementById('km-lista');
-  const mesAtual=new Date().toISOString().slice(0,7);
-  const doMes=kmRecords.filter(r=>r.data&&r.data.startsWith(mesAtual));
-  const byDay={};
-  doMes.forEach(r=>{if(!byDay[r.data])byDay[r.data]={};byDay[r.data][r.tipo]=r;});
-  const dias=Object.keys(byDay).sort();
-  if(!dias.length){el.innerHTML='<div class="empty">Nenhum KM registrado este mês.</div>';return;}
-  let total=0;
-  el.innerHTML=dias.map(d=>{
-    const ini=byDay[d].inicial||null;
-    const fin=byDay[d].final||null;
-    const rod=(ini&&fin)?fin.km-ini.km:null;
-    if(rod)total+=rod;
+  atualizarLabelMesKm();
+  const resumo=getKmResumoMes(mesKmAtual);
+  if(!resumo.dias.length){el.innerHTML='<div class="empty">Nenhum KM registrado neste mês.</div>';return;}
+  el.innerHTML=resumo.dias.map(item=>{
+    const {data:d,ini,fin,rod}=item;
     const[y,m,day]=d.split('-');
     return `<div class="km-box">
       <div class="km-box-title">${day}/${m}/${y}</div>
@@ -629,8 +633,36 @@ function renderKmLista(){
       <button onclick="delKmDia('${d}')" style="margin-top:8px;font-size:12px;color:var(--text3);background:none;border:none;cursor:pointer;">× excluir dia</button>
     </div>`;
   }).join('')+`<div class="km-box" style="border-color:var(--green);">
-    <div class="km-row"><span class="km-row-label" style="font-weight:700;">TOTAL KM RODADOS NO MÊS</span><span class="km-row-val km-total">${total.toLocaleString('pt-BR')} km</span></div>
+    <div class="km-row"><span class="km-row-label" style="font-weight:700;">TOTAL KM RODADOS NO MÊS</span><span class="km-row-val km-total">${resumo.total.toLocaleString('pt-BR')} km</span></div>
   </div>`;
+}
+
+function atualizarLabelMesKm(){
+  const el=document.getElementById('km-mes-label');
+  if(!el)return;
+  const[y,m]=mesKmAtual.split('-').map(Number);
+  el.textContent=NOMES_MES[m-1]+' '+y;
+}
+
+window.mudarMesKm=dir=>{
+  const[y,m]=mesKmAtual.split('-').map(Number);
+  const d=new Date(y,m-1+dir,1);
+  mesKmAtual=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  renderKmLista();
+};
+
+function getKmResumoMes(mes){
+  const doMes=kmRecords.filter(r=>r.data&&r.data.startsWith(mes));
+  const byDay={};
+  doMes.forEach(r=>{if(!byDay[r.data])byDay[r.data]={};byDay[r.data][r.tipo]=r;});
+  const dias=Object.keys(byDay).sort().map(d=>{
+    const ini=byDay[d].inicial||null;
+    const fin=byDay[d].final||null;
+    const rod=(ini&&fin)?Math.max(0,fin.km-ini.km):null;
+    return{data:d,ini,fin,rod};
+  });
+  const total=dias.reduce((a,d)=>a+(d.rod||0),0);
+  return{dias,total};
 }
 
 window.editarKmDia=async(data,tipo,valorAtual)=>{
@@ -651,24 +683,91 @@ window.delKmDia=async data=>{
 };
 
 window.exportarKmCSV=()=>{
-  const mesAtual=new Date().toISOString().slice(0,7);
-  const doMes=kmRecords.filter(r=>r.data&&r.data.startsWith(mesAtual));
-  const byDay={};
-  doMes.forEach(r=>{if(!byDay[r.data])byDay[r.data]={};byDay[r.data][r.tipo]=r.km;});
-  const dias=Object.keys(byDay).sort();
-  if(!dias.length){showToast('Nenhum KM para exportar');return;}
-  let total=0;
+  const resumo=getKmResumoMes(mesKmAtual);
+  if(!resumo.dias.length){showToast('Nenhum KM para exportar');return;}
   let csv='DATA;KM INICIAL;KM FINAL;KM RODADOS\n';
-  dias.forEach(d=>{
-    const ini=byDay[d].inicial||'';
-    const fin=byDay[d].final||'';
-    const rod=(byDay[d].inicial&&byDay[d].final)?byDay[d].final-byDay[d].inicial:0;
-    if(rod)total+=rod;
+  resumo.dias.forEach(item=>{
+    const d=item.data;
+    const ini=item.ini?item.ini.km:'';
+    const fin=item.fin?item.fin.km:'';
+    const rod=item.rod||0;
     const[y,m,day]=d.split('-');
     csv+=`${day}/${m}/${y};${ini};${fin};${rod||''}\n`;
   });
-  csv+=`\nTOTAL;;;${total}\n`;
-  downloadCSV(csv,'KM_'+mesAtual+'.csv');
+  csv+=`\nTOTAL;;;${resumo.total}\n`;
+  downloadCSV(csv,'KM_'+mesKmAtual+'.csv');
+};
+
+window.exportarKmPDF=()=>{
+  const resumo=getKmResumoMes(mesKmAtual);
+  if(!resumo.dias.length){showToast('Nenhum KM para exportar');return;}
+  const[y,m]=mesKmAtual.split('-').map(Number);
+  const nomeMes=NOMES_MES[m-1]+' '+y;
+  const completos=resumo.dias.filter(d=>d.rod!==null).length;
+  const pendentes=resumo.dias.length-completos;
+  const linhas=resumo.dias.map((item,idx)=>{
+    const[yy,mm,dd]=item.data.split('-');
+    return`<div class="km-report-line">
+      <div class="idx">${String(idx+1).padStart(2,'0')}</div>
+      <div class="date">${dd}/${mm}/${yy}</div>
+      <div class="cell"><span>Inicial</span><strong>${item.ini?item.ini.km.toLocaleString('pt-BR'):'—'}</strong></div>
+      <div class="cell"><span>Final</span><strong>${item.fin?item.fin.km.toLocaleString('pt-BR'):'—'}</strong></div>
+      <div class="total">${item.rod!==null?item.rod.toLocaleString('pt-BR')+' km':'Pendente'}</div>
+    </div>`;
+  }).join('');
+  const nomeUsuario=escapeHTML(currentUser.displayName||currentUser.email||'DRE Invicta');
+  const hoje=new Date().toLocaleDateString('pt-BR');
+  const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>KM ${nomeMes}</title>
+  <style>
+    @page{size:A4;margin:14mm;}
+    *{box-sizing:border-box;}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;margin:0;background:#f4f6f5;color:#17201c;font-size:12px;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    .page{max-width:900px;margin:0 auto;background:#fff;min-height:100vh;padding:28px;}
+    .hero{background:#10231d;color:#fff;border-radius:18px;padding:26px 28px;margin-bottom:18px;display:flex;justify-content:space-between;gap:24px;align-items:flex-start;}
+    .brand{font-size:12px;text-transform:uppercase;letter-spacing:.16em;color:#94d8be;font-weight:850;margin-bottom:22px;}
+    h1{font-size:30px;line-height:1.05;margin:0 0 8px;font-weight:850;}
+    .sub{color:#c7d6d0;font-size:12px;}
+    .period{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:800;white-space:nowrap;}
+    .summary{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:10px;margin-bottom:18px;}
+    .card{border:1px solid #e3e8e5;border-radius:14px;padding:14px;background:#fff;}
+    .card.primary{background:#e8f7f1;border-color:#bfe6d7;}
+    .label{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#6b756f;font-weight:850;margin-bottom:6px;}
+    .value{font-size:19px;font-weight:900;color:#111b17;white-space:nowrap;}
+    .primary .value{font-size:23px;color:#0f6e56;}
+    .km-table{border:1px solid #e5e9e7;border-radius:16px;overflow:hidden;background:#fff;}
+    .km-head{display:grid;grid-template-columns:42px 110px 1fr 1fr 120px;gap:10px;background:#f7faf8;color:#64716a;padding:10px 14px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;font-weight:900;}
+    .km-report-line{display:grid;grid-template-columns:42px 110px 1fr 1fr 120px;gap:10px;align-items:center;padding:12px 14px;border-top:1px solid #edf1ef;page-break-inside:avoid;}
+    .idx{width:28px;height:28px;border-radius:8px;background:#eef2f0;color:#65716b;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;}
+    .date{font-size:12px;font-weight:850;color:#17201c;}
+    .cell{background:#f7f9f8;border:1px solid #edf1ef;border-radius:10px;padding:8px 10px;}
+    .cell span{display:block;font-size:8px;text-transform:uppercase;letter-spacing:.1em;color:#7a847f;font-weight:850;margin-bottom:2px;}
+    .cell strong{font-size:12px;color:#17201c;}
+    .total{text-align:right;font-size:13px;font-weight:900;color:#0f6e56;}
+    .footer{margin-top:16px;border-top:1px solid #e6ebe8;padding-top:10px;color:#7c8781;font-size:10px;display:flex;justify-content:space-between;}
+    @media print{body{background:#fff;}.page{padding:0;}.hero{margin-bottom:12px;}}
+  </style></head><body>
+  <main class="page">
+    <section class="hero">
+      <div>
+        <div class="brand">DRE Invicta</div>
+        <h1>Relatório de KM</h1>
+        <div class="sub">${nomeUsuario} · Gerado em ${hoje}</div>
+      </div>
+      <div class="period">${nomeMes}</div>
+    </section>
+    <section class="summary">
+      <div class="card primary"><div class="label">Total rodado</div><div class="value">${resumo.total.toLocaleString('pt-BR')} km</div></div>
+      <div class="card"><div class="label">Dias registrados</div><div class="value">${resumo.dias.length}</div></div>
+      <div class="card"><div class="label">Dias completos</div><div class="value">${completos}</div></div>
+      <div class="card"><div class="label">Pendentes</div><div class="value">${pendentes}</div></div>
+    </section>
+    <section class="km-table">
+      <div class="km-head"><span>#</span><span>Data</span><span>KM inicial</span><span>KM final</span><span>Total</span></div>
+      ${linhas}
+    </section>
+    <div class="footer"><span>Relatório gerado pelo app DRE Invicta</span><span>${nomeMes}</span></div>
+  </main></body></html>`;
+  printHTML(html);
 };
 
 function buildFilters(){
