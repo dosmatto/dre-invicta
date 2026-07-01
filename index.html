@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-app-version="2.7">
+<html lang="pt-BR" data-app-version="3.0">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -9,6 +9,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="DRE Invicta">
+<meta name="theme-color" content="#1D9E75">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
 <title>DRE Invicta</title>
 <style>
 :root{--bg:#f5f5f5;--surface:#fff;--text:#1a1a1a;--text2:#666;--text3:#999;--border:rgba(0,0,0,0.1);--border2:rgba(0,0,0,0.18);--green:#1D9E75;--green-bg:#e1f5ee;--green-text:#0f6e56;--radius:12px;--rsm:8px;}
@@ -110,6 +115,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .desp-item-info{flex:1;min-width:0;}
 .desp-item-data{font-size:11px;color:var(--text3);}
 .desp-item-desc{font-size:13px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.desp-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px;}
+.cc-badge{display:inline-flex;align-items:center;border-radius:999px;padding:2px 7px;font-size:9px;line-height:1.4;text-transform:uppercase;letter-spacing:.05em;font-weight:800;background:var(--green-bg);color:var(--green-text);}
+.cc-badge.consultoria{background:#eaf1ff;color:#1d4ed8;}
 .desp-item-val{font-size:14px;font-weight:700;color:var(--text);flex-shrink:0;}
 .desp-item-actions{display:flex;gap:6px;flex-shrink:0;}
 .desp-thumb{width:40px;height:40px;border-radius:6px;object-fit:cover;cursor:pointer;flex-shrink:0;border:1px solid var(--border);}
@@ -126,7 +134,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </head>
 <body>
 <div id="login-screen">
-  <div id="login-version" style="position:absolute;top:12px;right:16px;font-size:11px;color:var(--text3);font-weight:500;">v2.7</div>
+  <div id="login-version" style="position:absolute;top:12px;right:16px;font-size:11px;color:var(--text3);font-weight:500;">v3.0</div>
   <div class="login-sub">Controle de abastecimento, quilometragem e despesas.<br>Dados salvos na nuvem com segurança.</div>
   <div style="width:100%;max-width:320px;">
     <button class="btn-google" onclick="entrarComGoogle()">
@@ -312,7 +320,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <button class="btn-primary" onclick="abrirFormVeiculo()" style="margin-top:8px;">+ Adicionar veículo</button>
     </div>
   </div>
-  <div id="app-version-footer" class="app-version-footer">DRE Invicta v2.7</div>
+  <div id="app-version-footer" class="app-version-footer">DRE Invicta v3.0</div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -335,9 +343,13 @@ const app=initializeApp(firebaseConfig);
 const auth=initializeAuth(app,{persistence:indexedDBLocalPersistence,popupRedirectResolver:browserPopupRedirectResolver});
 const db=getFirestore(app);
 const googleProvider=new GoogleAuthProvider();
-const APP_VERSION=document.documentElement.dataset.appVersion||'2.7';
+const APP_VERSION=document.documentElement.dataset.appVersion||'3.0';
 const AVG_CONS=8.2;
 const NOMES_MES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const CENTROS_CUSTO=[
+  {id:'consultoria',label:'Consultoria',cor:'#2563EB',bg:'#EAF1FF'},
+  {id:'ap',label:'AP',cor:'#0F8A67',bg:'#E8F7F1'}
+];
 
 let currentUser=null;
 let records=[];
@@ -365,6 +377,15 @@ function showToast(msg){
   t.textContent=msg;
   t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'),2800);
+}
+
+function getCentroCusto(d){
+  const raw=String(d&&d.centroCusto?d.centroCusto:'consultoria').toLowerCase();
+  return raw==='ap'?'ap':'consultoria';
+}
+
+function getCentroInfo(id){
+  return CENTROS_CUSTO.find(c=>c.id===id)||CENTROS_CUSTO[0];
 }
 
 async function checkForAppUpdate(){
@@ -488,6 +509,7 @@ async function iniciarApp(user){
 
   unsubAbast=onSnapshot(query(collection(db,'users',uid,'abastecimentos'),orderBy('km')),snap=>{
     records=snap.docs.map(d=>({...d.data(),_docId:d.id}));
+    preencherUltimoAbastecimento();
     if(document.getElementById('sec-historico').style.display!=='none'){buildFilters();renderHist();}
     if(document.getElementById('sec-stats').style.display!=='none')renderStats();
   });
@@ -505,6 +527,61 @@ function abastRef(){return collection(db,'users',currentUser.uid,'abastecimentos
 function kmRef(){return collection(db,'users',currentUser.uid,'kmdiario');}
 function despRef(){return collection(db,'users',currentUser.uid,'despesas');}
 function veicRef(){return collection(db,'users',currentUser.uid,'veiculos');}
+
+function sortByDateTimeDesc(a,b){
+  const ad=(a.data||'')+'T'+(a.hora||'00:00');
+  const bd=(b.data||'')+'T'+(b.hora||'00:00');
+  const byDate=bd.localeCompare(ad);
+  if(byDate)return byDate;
+  return (b.km||0)-(a.km||0);
+}
+
+function sortByDateTimeAsc(a,b){
+  return -sortByDateTimeDesc(a,b);
+}
+
+function getUltimoAbastecimento(){
+  return [...records].filter(r=>r&&r.data).sort(sortByDateTimeDesc)[0]||[...records].sort((a,b)=>(b.km||0)-(a.km||0))[0]||null;
+}
+
+function preencherUltimoAbastecimento(){
+  const ultimo=getUltimoAbastecimento();
+  if(!ultimo)return;
+  const litrosEl=document.getElementById('in-litros');
+  const precoEl=document.getElementById('in-preco');
+  const tipoEl=document.getElementById('in-tipo');
+  const postoEl=document.getElementById('in-posto');
+  const veicEl=document.getElementById('in-veiculo');
+  const kmEl=document.getElementById('in-km');
+  if(litrosEl&&ultimo.litros!=null)litrosEl.value=Number(ultimo.litros).toFixed(2);
+  if(precoEl&&ultimo.preco!=null)precoEl.value=Number(ultimo.preco).toFixed(2);
+  if(tipoEl)tipoEl.value=ultimo.tipo||'Diesel';
+  if(postoEl)postoEl.value=ultimo.posto||'';
+  if(veicEl&&ultimo.veiculo)veicEl.value=ultimo.veiculo;
+  if(kmEl)kmEl.value='';
+}
+
+function getRecordsComConsumoAtualizado(){
+  const sortedByVehicleKm=[...records].sort((a,b)=>{
+    const av=a.veiculo||'';
+    const bv=b.veiculo||'';
+    const byVehicle=av.localeCompare(bv);
+    if(byVehicle)return byVehicle;
+    return (a.km||0)-(b.km||0);
+  });
+  const prevByVehicle={};
+  const byId={};
+  sortedByVehicleKm.forEach(r=>{
+    const veic=r.veiculo||'__sem_veiculo__';
+    const prev=prevByVehicle[veic];
+    const litros=Number(r.litros)||0;
+    const km=Number(r.km)||0;
+    const consumo=(prev&&litros>0&&km>Number(prev.km))?(km-Number(prev.km))/litros:null;
+    byId[r._docId]={...r,consumo};
+    if(km>0)prevByVehicle[veic]=r;
+  });
+  return records.map(r=>byId[r._docId]||r);
+}
 
 window.salvarAbast=async()=>{
   const data=document.getElementById('in-data').value;
@@ -525,10 +602,15 @@ window.salvarAbast=async()=>{
   const consumo=prev?(km-prev.km)/litros:null;
   await addDoc(abastRef(),{data,hora,litros,preco,km,tipo,posto,veiculo:veiculoSel,consumo,criadoEm:serverTimestamp()});
   showToast('✓ Abastecimento salvo!');
-  ['in-litros','in-preco','in-km','in-posto'].forEach(id=>document.getElementById(id).value='');
   const nn=new Date();
   document.getElementById('in-data').value=nn.toISOString().split('T')[0];
   document.getElementById('in-hora').value=nn.toTimeString().slice(0,5);
+  document.getElementById('in-litros').value=litros.toFixed(2);
+  document.getElementById('in-preco').value=preco.toFixed(2);
+  document.getElementById('in-tipo').value=tipo;
+  document.getElementById('in-posto').value=posto;
+  document.getElementById('in-veiculo').value=veiculoSel;
+  document.getElementById('in-km').value='';
 };
 
 window.setTipo=t=>{
@@ -899,17 +981,18 @@ window.exportarPDF=()=>{
 function renderStats(){
   const grid=document.getElementById('metrics-grid');
   const chartSec=document.getElementById('chart-section');
-  const wC=records.filter(r=>r.consumo&&r.consumo<15);
-  if(records.length<2||!wC.length){grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--text3);font-size:14px;">Poucos registros.</div>';chartSec.style.display='none';return;}
+  const dados=getRecordsComConsumoAtualizado().sort(sortByDateTimeAsc);
+  const wC=dados.filter(r=>r.consumo&&r.consumo<15);
+  if(dados.length<2||!wC.length){grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--text3);font-size:14px;">Poucos registros.</div>';chartSec.style.display='none';return;}
   chartSec.style.display='block';
-  const tL=records.reduce((a,r)=>a+r.litros,0);
-  const tG=records.reduce((a,r)=>a+r.litros*r.preco,0);
-  const aP=records.reduce((a,r)=>a+r.preco,0)/records.length;
+  const tL=dados.reduce((a,r)=>a+(Number(r.litros)||0),0);
+  const tG=dados.reduce((a,r)=>a+(Number(r.litros)||0)*(Number(r.preco)||0),0);
+  const aP=dados.reduce((a,r)=>a+(Number(r.preco)||0),0)/dados.length;
   const aC=wC.reduce((a,r)=>a+r.consumo,0)/wC.length;
-  const kmMax=Math.max(...records.map(r=>r.km));
-  const kmMin=Math.min(...records.map(r=>r.km));
+  const kmMax=Math.max(...dados.map(r=>Number(r.km)||0));
+  const kmMin=Math.min(...dados.map(r=>Number(r.km)||0));
   const kmT=kmMax-kmMin;
-  const dates=records.map(r=>new Date(r.data)).sort((a,b)=>a-b);
+  const dates=dados.map(r=>new Date(r.data)).sort((a,b)=>a-b);
   const mes=(dates[dates.length-1]-dates[0])/(1000*60*60*24*30.44)||1;
   grid.innerHTML=`
     <div class="metric"><div class="mlabel">Média consumo</div><div class="mvalue">${aC.toFixed(2)}<span class="munit"> km/l</span></div></div>
@@ -921,7 +1004,7 @@ function renderStats(){
     <div class="metric"><div class="mlabel">Média km/mês</div><div class="mvalue">${Math.round(kmT/mes).toLocaleString('pt-BR')}<span class="munit"> km</span></div></div>
     <div class="metric"><div class="mlabel">Gasto/mês</div><div class="mvalue" style="font-size:16px">R$ ${(tG/mes).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div></div>
   `;
-  drawCharts(wC,records);
+  drawCharts(wC,dados);
 }
 
 function drawCharts(wc,all){
@@ -983,11 +1066,13 @@ function renderDespesas(){
     el.innerHTML=itens.map(d=>{
       const[yy,mm,dd]=d.data.split('-');
       const temFoto=d.foto&&d.foto.length>100;
+      const centro=getCentroInfo(getCentroCusto(d));
       return`<div class="desp-item">
         ${temFoto?`<img src="${d.foto}" class="desp-thumb" onclick="verFoto('${d._docId}')" alt="comprovante">`:`<div style="width:40px;height:40px;border-radius:6px;background:var(--bg);border:1px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;cursor:pointer;" onclick="abrirFotoExistente('${d._docId}')">📷</div>`}
         <div class="desp-item-info">
           <div class="desp-item-data">${dd}/${mm}/${yy}</div>
           <div class="desp-item-desc">${escapeHTML(d.desc||'—')}</div>
+          <div class="desp-tags"><span class="cc-badge ${centro.id==='consultoria'?'consultoria':''}">${centro.label}</span></div>
         </div>
         <div class="desp-item-val">R$ ${d.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         <div class="desp-item-actions">
@@ -1011,6 +1096,11 @@ window.abrirFormDespesa=(cat,docId)=>{
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <div class="field"><label>Data</label><input type="date" id="d-data" value="${existing?existing.data:new Date().toISOString().split('T')[0]}"></div>
       <div class="field"><label>Valor (R$)</label><input type="number" id="d-valor" placeholder="0,00" step="0.01" min="0" inputmode="decimal" value="${existing?existing.valor:''}"></div>
+    </div>
+    <div class="field"><label>Centro de custo</label>
+      <select id="d-centro-custo">
+        ${CENTROS_CUSTO.map(c=>`<option value="${c.id}" ${getCentroCusto(existing||{})===c.id?'selected':''}>${c.label}</option>`).join('')}
+      </select>
     </div>
     <div class="field"><label>${labelDesc[cat]}</label><input type="text" id="d-desc" placeholder="${cat==='pedagio'?'ex: São Paulo → Curitiba':'ex: Posto Shell'}" value="${existing?escapeAttr(existing.desc||''):''}"></div>
     <div class="field"><label>Comprovante / Nota (opcional)</label>
@@ -1049,12 +1139,13 @@ window.salvarDespesa=async(cat,docId)=>{
   const data=document.getElementById('d-data').value;
   const valor=parseFloat(document.getElementById('d-valor').value);
   const desc=document.getElementById('d-desc').value;
+  const centroCusto=document.getElementById('d-centro-custo').value||'consultoria';
   if(!data||isNaN(valor)||valor<=0){showToast('⚠️ Preencha data e valor');return;}
   const btn=document.getElementById('d-save-btn');
   if(btn){btn.disabled=true;btn.textContent='Salvando...';btn.style.opacity='.7';}
   const fotoImg=document.getElementById('d-foto-preview');
   const foto=fotoImg&&fotoImg.classList.contains('show')&&fotoImg.src?fotoImg.src:'';
-  const dados={data,valor,desc,cat,foto,criadoEm:serverTimestamp()};
+  const dados={data,valor,desc,cat,centroCusto,foto,criadoEm:serverTimestamp()};
   try{
     if(docId){
       await updateDoc(doc(db,'users',currentUser.uid,'despesas',docId),dados);
@@ -1111,6 +1202,10 @@ window.exportarDespesasPDF=async()=>{
     acc[cat.id]=doMes.filter(d=>d.cat===cat.id).reduce((a,d)=>a+d.valor,0);
     return acc;
   },{});
+  const centroTotals=CENTROS_CUSTO.reduce((acc,centro)=>{
+    acc[centro.id]=doMes.filter(d=>getCentroCusto(d)===centro.id).reduce((a,d)=>a+d.valor,0);
+    return acc;
+  },{});
   const totalGeral=doMes.reduce((a,d)=>a+d.valor,0);
   const totalReembolso=(totals.pedagio||0)+(totals.part||0);
   const totalCorp=totals.corp||0;
@@ -1144,33 +1239,47 @@ window.exportarDespesasPDF=async()=>{
     <div class="km-list">${kmRows||'<div class="empty-report">Nenhum KM registrado neste mês.</div>'}</div>
   </section>`;
   let blocosHTML='';
-  for(const cat of cats){
-    const itens=doMes.filter(d=>d.cat===cat.id);
-    const total=totals[cat.id]||0;
-    const linhas=await Promise.all(itens.map(async(d,idx)=>{
-      const[yy,mm,dd]=d.data.split('-');
-      const fotoRelatorio=d.foto?await resizeDataURL(d.foto,360,.66):'';
-      const fotoHtml=fotoRelatorio?`<img class="receipt-img" src="${fotoRelatorio}" alt="Comprovante">`:'<div class="receipt-empty">Sem foto</div>';
-      return`<div class="expense-row">
-        <div class="row-index">${String(idx+1).padStart(2,'0')}</div>
-        <div class="row-main">
-          <div class="row-desc">${escapeHTML(d.desc||'Sem descrição')}</div>
-          <div class="row-meta"><span>${dd}/${mm}/${yy}</span><span>${cat.label}</span></div>
-        </div>
-        <div class="row-value">R$ ${d.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
-        <div class="row-receipt">${fotoHtml}</div>
-      </div>`;
-    }));
-    blocosHTML+=`
-      <section class="category-card">
-        <div class="category-head" style="border-color:${cat.cor}">
-          <div>
-            <div class="category-kicker" style="color:${cat.cor}">${cat.sub}</div>
-            <h2>${cat.titulo}</h2>
+  for(const centro of CENTROS_CUSTO){
+    let categoriasHTML='';
+    for(const cat of cats){
+      const itens=doMes.filter(d=>d.cat===cat.id&&getCentroCusto(d)===centro.id);
+      const total=itens.reduce((a,d)=>a+d.valor,0);
+      const linhas=await Promise.all(itens.map(async(d,idx)=>{
+        const[yy,mm,dd]=d.data.split('-');
+        const fotoRelatorio=d.foto?await resizeDataURL(d.foto,360,.66):'';
+        const fotoHtml=fotoRelatorio?`<img class="receipt-img" src="${fotoRelatorio}" alt="Comprovante">`:'<div class="receipt-empty">Sem foto</div>';
+        return`<div class="expense-row">
+          <div class="row-index">${String(idx+1).padStart(2,'0')}</div>
+          <div class="row-main">
+            <div class="row-desc">${escapeHTML(d.desc||'Sem descrição')}</div>
+            <div class="row-meta"><span>${dd}/${mm}/${yy}</span><span>${cat.label}</span><span>${centro.label}</span></div>
           </div>
-          <div class="category-total" style="background:${cat.bg};color:${cat.cor}">R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+          <div class="row-value">R$ ${d.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+          <div class="row-receipt">${fotoHtml}</div>
+        </div>`;
+      }));
+      categoriasHTML+=`
+        <section class="category-card">
+          <div class="category-head" style="border-color:${cat.cor}">
+            <div>
+              <div class="category-kicker" style="color:${cat.cor}">${cat.sub}</div>
+              <h2>${cat.titulo}</h2>
+            </div>
+            <div class="category-total" style="background:${cat.bg};color:${cat.cor}">R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+          </div>
+          <div class="expense-list">${linhas.length?linhas.join(''):'<div class="empty-report">Nenhum lançamento nesta categoria.</div>'}</div>
+        </section>`;
+    }
+    blocosHTML+=`
+      <section class="cost-center-block">
+        <div class="cost-center-head" style="border-color:${centro.cor};background:${centro.bg}">
+          <div>
+            <div class="category-kicker" style="color:${centro.cor}">Centro de custo</div>
+            <h2>${centro.label}</h2>
+          </div>
+          <div class="category-total" style="background:#fff;color:${centro.cor}">R$ ${(centroTotals[centro.id]||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         </div>
-        <div class="expense-list">${linhas.length?linhas.join(''):'<div class="empty-report">Nenhum lançamento nesta categoria.</div>'}</div>
+        ${categoriasHTML}
       </section>`;
   }
   const nomeUsuario=escapeHTML(currentUser.displayName||currentUser.email||'DRE Invicta');
@@ -1186,13 +1295,17 @@ window.exportarDespesasPDF=async()=>{
     h1{font-size:30px;line-height:1.05;margin:0 0 8px;font-weight:800;letter-spacing:0;}
     .hero-sub{color:#c7d6d0;font-size:12px;}
     .period-pill{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:700;white-space:nowrap;}
-    .summary-grid{display:grid;grid-template-columns:1.25fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:18px;}
+    .summary-grid{display:grid;grid-template-columns:1.25fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px;}
+    .center-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;}
     .summary-card{border:1px solid #e3e8e5;border-radius:14px;padding:14px 14px;background:#fff;}
     .summary-card.primary{background:#e8f7f1;border-color:#bfe6d7;}
     .summary-label{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#6b756f;font-weight:800;margin-bottom:6px;}
     .summary-value{font-size:18px;font-weight:850;color:#111b17;white-space:nowrap;}
     .summary-card.primary .summary-value{font-size:22px;color:#0f6e56;}
     .category-card{border:1px solid #e5e9e7;border-radius:16px;overflow:hidden;margin-bottom:16px;page-break-inside:avoid;background:#fff;}
+    .cost-center-block{margin-bottom:22px;page-break-inside:avoid;}
+    .cost-center-head{border-left:6px solid #1D9E75;border-radius:16px;padding:15px 16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:12px;}
+    .cost-center-head h2{font-size:20px;margin:0;font-weight:900;color:#17201c;}
     .category-head{border-left:6px solid #1D9E75;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;background:#fbfcfb;gap:12px;}
     .category-kicker{font-size:9px;text-transform:uppercase;letter-spacing:.12em;font-weight:850;margin-bottom:3px;}
     .category-head h2{font-size:17px;margin:0;font-weight:800;color:#17201c;}
@@ -1235,6 +1348,9 @@ window.exportarDespesasPDF=async()=>{
       <div class="summary-card"><div class="summary-label">KM rodados</div><div class="summary-value">${totalKm.toLocaleString('pt-BR')} km</div></div>
       <div class="summary-card"><div class="summary-label">Lançamentos</div><div class="summary-value">${doMes.length}</div></div>
     </section>
+    <section class="center-grid">
+      ${CENTROS_CUSTO.map(c=>`<div class="summary-card"><div class="summary-label">Centro ${c.label}</div><div class="summary-value" style="color:${c.cor}">R$ ${(centroTotals[c.id]||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div></div>`).join('')}
+    </section>
     ${kmSection}
     ${blocosHTML}
     <div class="footer-note"><span>Relatório gerado pelo app DRE Invicta</span><span>${nomeMes}</span></div>
@@ -1257,22 +1373,37 @@ window.exportarFotosDespesasPDF=async()=>{
   showToast('Montando fotos do mês...');
   const totalFotos=fotos.length;
   const totalValor=fotos.reduce((a,d)=>a+(d.valor||0),0);
-  const cards=await Promise.all(fotos.map(async(d,idx)=>{
-    const[yy,mm,dd]=d.data.split('-');
-    const cat=catInfo[d.cat]||{titulo:'Despesa',cor:'#475569'};
-    const foto=await resizeDataURL(d.foto,1100,.78);
-    return`<article class="receipt-card">
-      <div class="receipt-photo-wrap"><img src="${foto}" alt="Comprovante ${idx+1}"></div>
-      <div class="receipt-caption">
-        <div class="receipt-topline">
-          <span class="receipt-number">${String(idx+1).padStart(2,'0')}</span>
-          <span class="receipt-cat" style="color:${cat.cor};background:${hexToSoftBg(cat.cor)}">${cat.titulo}</span>
+  let receiptSections='';
+  for(const centro of CENTROS_CUSTO){
+    const fotosCentro=fotos.filter(d=>getCentroCusto(d)===centro.id);
+    const totalCentro=fotosCentro.reduce((a,d)=>a+(d.valor||0),0);
+    const cards=await Promise.all(fotosCentro.map(async(d,idx)=>{
+      const[yy,mm,dd]=d.data.split('-');
+      const cat=catInfo[d.cat]||{titulo:'Despesa',cor:'#475569'};
+      const foto=await resizeDataURL(d.foto,1100,.78);
+      return`<article class="receipt-card">
+        <div class="receipt-photo-wrap"><img src="${foto}" alt="Comprovante ${idx+1}"></div>
+        <div class="receipt-caption">
+          <div class="receipt-topline">
+            <span class="receipt-number">${String(idx+1).padStart(2,'0')}</span>
+            <span style="display:flex;gap:6px;align-items:center;">
+              <span class="receipt-cat" style="color:${centro.cor};background:${centro.bg}">${centro.label}</span>
+              <span class="receipt-cat" style="color:${cat.cor};background:${hexToSoftBg(cat.cor)}">${cat.titulo}</span>
+            </span>
+          </div>
+          <div class="receipt-desc">${escapeHTML(d.desc||'Sem descrição')}</div>
+          <div class="receipt-meta"><span>${dd}/${mm}/${yy}</span><span>R$ ${(d.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
         </div>
-        <div class="receipt-desc">${escapeHTML(d.desc||'Sem descrição')}</div>
-        <div class="receipt-meta"><span>${dd}/${mm}/${yy}</span><span>R$ ${(d.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+      </article>`;
+    }));
+    receiptSections+=`<section class="receipt-center">
+      <div class="receipt-center-head" style="border-color:${centro.cor};background:${centro.bg}">
+        <div><div class="sum-label" style="color:${centro.cor}">Centro de custo</div><h2>${centro.label}</h2></div>
+        <div class="receipt-center-total" style="color:${centro.cor}">R$ ${totalCentro.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
       </div>
-    </article>`;
-  }));
+      <div class="receipt-grid">${cards.length?cards.join(''):'<div class="empty-report">Nenhum comprovante neste centro.</div>'}</div>
+    </section>`;
+  }
   const nomeUsuario=escapeHTML(currentUser.displayName||currentUser.email||'DRE Invicta');
   const hoje=new Date().toLocaleDateString('pt-BR');
   const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Comprovantes ${nomeMes}</title>
@@ -1290,6 +1421,10 @@ window.exportarFotosDespesasPDF=async()=>{
     .sum-card{border:1px solid #e3e8e5;border-radius:14px;padding:13px 14px;background:#fff;}
     .sum-label{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#6f7a74;font-weight:850;margin-bottom:5px;}
     .sum-value{font-size:18px;font-weight:900;color:#13201a;}
+    .receipt-center{margin-bottom:18px;page-break-inside:avoid;}
+    .receipt-center-head{border-left:6px solid #1D9E75;border-radius:16px;padding:13px 14px;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+    .receipt-center-head h2{margin:0;font-size:19px;font-weight:900;color:#17201c;}
+    .receipt-center-total{font-size:16px;font-weight:900;background:#fff;border-radius:999px;padding:7px 11px;white-space:nowrap;}
     .receipt-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
     .receipt-card{border:1px solid #e2e8e4;border-radius:16px;overflow:hidden;background:#fff;page-break-inside:avoid;}
     .receipt-photo-wrap{height:300px;background:#f0f3f1;display:flex;align-items:center;justify-content:center;border-bottom:1px solid #e8eeea;}
@@ -1300,6 +1435,7 @@ window.exportarFotosDespesasPDF=async()=>{
     .receipt-cat{border-radius:999px;padding:5px 9px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;font-weight:900;}
     .receipt-desc{font-size:13px;font-weight:800;margin-bottom:7px;color:#17201c;}
     .receipt-meta{display:flex;justify-content:space-between;gap:10px;color:#68746e;font-size:11px;font-weight:800;}
+    .empty-report{padding:20px 8px;color:#8a948f;font-size:12px;text-align:center;}
     .footer-note{margin-top:16px;border-top:1px solid #e6ebe8;padding-top:10px;color:#7c8781;font-size:10px;display:flex;justify-content:space-between;gap:10px;}
     @media print{body{background:#fff;}.page{padding:0;}.hero{margin-bottom:12px;}.receipt-grid{gap:10px;}.receipt-photo-wrap{height:265px;}}
   </style></head><body>
@@ -1317,7 +1453,7 @@ window.exportarFotosDespesasPDF=async()=>{
       <div class="sum-card"><div class="sum-label">Valor com foto</div><div class="sum-value">R$ ${totalValor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div></div>
       <div class="sum-card"><div class="sum-label">Período</div><div class="sum-value">${nomeMes}</div></div>
     </section>
-    <section class="receipt-grid">${cards.join('')}</section>
+    ${receiptSections}
     <div class="footer-note"><span>Somente fotos de despesas com comprovante anexado</span><span>${nomeMes}</span></div>
   </main></body></html>`;
   printHTML(html);
@@ -1344,6 +1480,7 @@ function atualizarSelectVeiculo(){
     sel.appendChild(op);
   });
   if(val)sel.value=val;
+  preencherUltimoAbastecimento();
 }
 
 function renderVeiculos(){
