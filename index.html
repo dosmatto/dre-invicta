@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-app-version="3.0">
+<html lang="pt-BR" data-app-version="3.1">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -118,6 +118,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .desp-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px;}
 .cc-badge{display:inline-flex;align-items:center;border-radius:999px;padding:2px 7px;font-size:9px;line-height:1.4;text-transform:uppercase;letter-spacing:.05em;font-weight:800;background:var(--green-bg);color:var(--green-text);}
 .cc-badge.consultoria{background:#eaf1ff;color:#1d4ed8;}
+.cc-badge.recur{background:#fff3e4;color:#b45309;}
+.recurrence-box{border:1px solid var(--border);background:var(--bg);border-radius:var(--rsm);padding:12px 14px;margin-bottom:14px;}
+.recurrence-toggle{display:flex;align-items:center;gap:10px;cursor:pointer;color:var(--text);font-size:14px;font-weight:650;}
+.recurrence-toggle input{width:18px;height:18px;accent-color:var(--green);}
+.recurrence-options{display:none;margin-top:12px;}
+.recurrence-options.show{display:block;}
+.recurrence-help{font-size:11px;color:var(--text3);line-height:1.35;margin-top:6px;}
 .desp-item-val{font-size:14px;font-weight:700;color:var(--text);flex-shrink:0;}
 .desp-item-actions{display:flex;gap:6px;flex-shrink:0;}
 .desp-thumb{width:40px;height:40px;border-radius:6px;object-fit:cover;cursor:pointer;flex-shrink:0;border:1px solid var(--border);}
@@ -134,7 +141,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </head>
 <body>
 <div id="login-screen">
-  <div id="login-version" style="position:absolute;top:12px;right:16px;font-size:11px;color:var(--text3);font-weight:500;">v3.0</div>
+  <div id="login-version" style="position:absolute;top:12px;right:16px;font-size:11px;color:var(--text3);font-weight:500;">v3.1</div>
   <div class="login-sub">Controle de abastecimento, quilometragem e despesas.<br>Dados salvos na nuvem com segurança.</div>
   <div style="width:100%;max-width:320px;">
     <button class="btn-google" onclick="entrarComGoogle()">
@@ -320,7 +327,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <button class="btn-primary" onclick="abrirFormVeiculo()" style="margin-top:8px;">+ Adicionar veículo</button>
     </div>
   </div>
-  <div id="app-version-footer" class="app-version-footer">DRE Invicta v3.0</div>
+  <div id="app-version-footer" class="app-version-footer">DRE Invicta v3.1</div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -343,7 +350,7 @@ const app=initializeApp(firebaseConfig);
 const auth=initializeAuth(app,{persistence:indexedDBLocalPersistence,popupRedirectResolver:browserPopupRedirectResolver});
 const db=getFirestore(app);
 const googleProvider=new GoogleAuthProvider();
-const APP_VERSION=document.documentElement.dataset.appVersion||'3.0';
+const APP_VERSION=document.documentElement.dataset.appVersion||'3.1';
 const AVG_CONS=8.2;
 const NOMES_MES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const CENTROS_CUSTO=[
@@ -386,6 +393,23 @@ function getCentroCusto(d){
 
 function getCentroInfo(id){
   return CENTROS_CUSTO.find(c=>c.id===id)||CENTROS_CUSTO[0];
+}
+
+function recorrenciaLabel(d){
+  if(!d||!d.recorrenciaTotal)return'';
+  return String(d.recorrenciaParcela||1)+'/'+String(d.recorrenciaTotal);
+}
+
+function addMonthsToISO(dateISO,months){
+  const[y,m,d]=String(dateISO).split('-').map(Number);
+  const lastDay=new Date(y,m-1+months+1,0).getDate();
+  const nd=new Date(y,m-1+months,Math.min(d,lastDay));
+  return nd.getFullYear()+'-'+String(nd.getMonth()+1).padStart(2,'0')+'-'+String(nd.getDate()).padStart(2,'0');
+}
+
+function newRecorrenciaId(){
+  if(window.crypto&&window.crypto.randomUUID)return window.crypto.randomUUID();
+  return'rec-'+Date.now()+'-'+Math.random().toString(16).slice(2);
 }
 
 async function checkForAppUpdate(){
@@ -1067,12 +1091,13 @@ function renderDespesas(){
       const[yy,mm,dd]=d.data.split('-');
       const temFoto=d.foto&&d.foto.length>100;
       const centro=getCentroInfo(getCentroCusto(d));
+      const recLabel=recorrenciaLabel(d);
       return`<div class="desp-item">
         ${temFoto?`<img src="${d.foto}" class="desp-thumb" onclick="verFoto('${d._docId}')" alt="comprovante">`:`<div style="width:40px;height:40px;border-radius:6px;background:var(--bg);border:1px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;cursor:pointer;" onclick="abrirFotoExistente('${d._docId}')">📷</div>`}
         <div class="desp-item-info">
           <div class="desp-item-data">${dd}/${mm}/${yy}</div>
           <div class="desp-item-desc">${escapeHTML(d.desc||'—')}</div>
-          <div class="desp-tags"><span class="cc-badge ${centro.id==='consultoria'?'consultoria':''}">${centro.label}</span></div>
+          <div class="desp-tags"><span class="cc-badge ${centro.id==='consultoria'?'consultoria':''}">${centro.label}</span>${recLabel?`<span class="cc-badge recur">${recLabel}</span>`:''}</div>
         </div>
         <div class="desp-item-val">R$ ${d.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         <div class="desp-item-actions">
@@ -1102,6 +1127,16 @@ window.abrirFormDespesa=(cat,docId)=>{
         ${CENTROS_CUSTO.map(c=>`<option value="${c.id}" ${getCentroCusto(existing||{})===c.id?'selected':''}>${c.label}</option>`).join('')}
       </select>
     </div>
+    ${!existing?`<div class="recurrence-box">
+      <label class="recurrence-toggle">
+        <input type="checkbox" id="d-recorrente" onchange="toggleRecorrenciaDespesa()">
+        <span>Repetir esta despesa nos próximos meses</span>
+      </label>
+      <div id="d-recorrencia-options" class="recurrence-options">
+        <div class="field" style="margin-bottom:0;"><label>Total de parcelas</label><input type="number" id="d-recorrencia-total" min="2" max="24" step="1" inputmode="numeric" value="3"></div>
+        <div class="recurrence-help">Exemplo: 3 parcelas cria este mês e os próximos 2 meses, marcadas como 1/3, 2/3 e 3/3.</div>
+      </div>
+    </div>`:(recorrenciaLabel(existing)?`<div class="recurrence-box"><div class="recurrence-toggle"><span>Recorrência ${recorrenciaLabel(existing)}</span></div><div class="recurrence-help">Esta edição altera somente esta parcela.</div></div>`:'')}
     <div class="field"><label>${labelDesc[cat]}</label><input type="text" id="d-desc" placeholder="${cat==='pedagio'?'ex: São Paulo → Curitiba':'ex: Posto Shell'}" value="${existing?escapeAttr(existing.desc||''):''}"></div>
     <div class="field"><label>Comprovante / Nota (opcional)</label>
       <div style="border:2px dashed var(--border2);border-radius:var(--rsm);padding:16px;text-align:center;cursor:pointer;" onclick="document.getElementById('d-foto-input').click()">
@@ -1116,6 +1151,12 @@ window.abrirFormDespesa=(cat,docId)=>{
   </div>`;
   document.body.appendChild(overlay);
   overlay.addEventListener('click',e=>{if(e.target===overlay)fecharDespOverlay();});
+};
+
+window.toggleRecorrenciaDespesa=()=>{
+  const check=document.getElementById('d-recorrente');
+  const opts=document.getElementById('d-recorrencia-options');
+  if(opts)opts.classList.toggle('show',!!(check&&check.checked));
 };
 
 window.previewFotoDespesa=input=>{
@@ -1145,12 +1186,30 @@ window.salvarDespesa=async(cat,docId)=>{
   if(btn){btn.disabled=true;btn.textContent='Salvando...';btn.style.opacity='.7';}
   const fotoImg=document.getElementById('d-foto-preview');
   const foto=fotoImg&&fotoImg.classList.contains('show')&&fotoImg.src?fotoImg.src:'';
-  const dados={data,valor,desc,cat,centroCusto,foto,criadoEm:serverTimestamp()};
+  const repetir=!docId&&document.getElementById('d-recorrente')&&document.getElementById('d-recorrente').checked;
+  const totalRec=Math.max(2,Math.min(24,parseInt(document.getElementById('d-recorrencia-total')?.value||'3')||3));
+  const dadosBase={data,valor,desc,cat,centroCusto,foto};
   try{
     if(docId){
+      const dados={...dadosBase,criadoEm:serverTimestamp()};
       await updateDoc(doc(db,'users',currentUser.uid,'despesas',docId),dados);
       showToast('✓ Despesa atualizada!');
+    }else if(repetir){
+      const recorrenciaId=newRecorrenciaId();
+      for(let i=0;i<totalRec;i++){
+        await addDoc(despRef(),{
+          ...dadosBase,
+          data:addMonthsToISO(data,i),
+          recorrente:true,
+          recorrenciaId,
+          recorrenciaParcela:i+1,
+          recorrenciaTotal:totalRec,
+          criadoEm:serverTimestamp()
+        });
+      }
+      showToast('✓ '+totalRec+' despesas recorrentes criadas!');
     }else{
+      const dados={...dadosBase,recorrente:false,criadoEm:serverTimestamp()};
       await addDoc(despRef(),dados);
       showToast('✓ Despesa salva!');
     }
@@ -1248,11 +1307,12 @@ window.exportarDespesasPDF=async()=>{
         const[yy,mm,dd]=d.data.split('-');
         const fotoRelatorio=d.foto?await resizeDataURL(d.foto,360,.66):'';
         const fotoHtml=fotoRelatorio?`<img class="receipt-img" src="${fotoRelatorio}" alt="Comprovante">`:'<div class="receipt-empty">Sem foto</div>';
+        const recLabel=recorrenciaLabel(d);
         return`<div class="expense-row">
           <div class="row-index">${String(idx+1).padStart(2,'0')}</div>
           <div class="row-main">
             <div class="row-desc">${escapeHTML(d.desc||'Sem descrição')}</div>
-            <div class="row-meta"><span>${dd}/${mm}/${yy}</span><span>${cat.label}</span><span>${centro.label}</span></div>
+            <div class="row-meta"><span>${dd}/${mm}/${yy}</span><span>${cat.label}</span><span>${centro.label}</span>${recLabel?`<span>${recLabel}</span>`:''}</div>
           </div>
           <div class="row-value">R$ ${d.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
           <div class="row-receipt">${fotoHtml}</div>
@@ -1381,6 +1441,7 @@ window.exportarFotosDespesasPDF=async()=>{
       const[yy,mm,dd]=d.data.split('-');
       const cat=catInfo[d.cat]||{titulo:'Despesa',cor:'#475569'};
       const foto=await resizeDataURL(d.foto,1100,.78);
+      const recLabel=recorrenciaLabel(d);
       return`<article class="receipt-card">
         <div class="receipt-photo-wrap"><img src="${foto}" alt="Comprovante ${idx+1}"></div>
         <div class="receipt-caption">
@@ -1389,6 +1450,7 @@ window.exportarFotosDespesasPDF=async()=>{
             <span style="display:flex;gap:6px;align-items:center;">
               <span class="receipt-cat" style="color:${centro.cor};background:${centro.bg}">${centro.label}</span>
               <span class="receipt-cat" style="color:${cat.cor};background:${hexToSoftBg(cat.cor)}">${cat.titulo}</span>
+              ${recLabel?`<span class="receipt-cat" style="color:#B45309;background:#FFF3E4">${recLabel}</span>`:''}
             </span>
           </div>
           <div class="receipt-desc">${escapeHTML(d.desc||'Sem descrição')}</div>
