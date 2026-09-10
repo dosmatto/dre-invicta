@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-app-version="3.2">
+<html lang="pt-BR" data-app-version="3.3">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -50,6 +50,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .field label{display:block;font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
 .field input,.field select{width:100%;padding:13px 14px;background:var(--surface);border:0.5px solid var(--border2);border-radius:var(--rsm);font-size:16px;color:var(--text);font-family:inherit;outline:none;-webkit-appearance:none;}
 .field input:focus,.field select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(29,158,117,.12);}
+.field input.herdado{color:var(--text2);}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .btn-primary{width:100%;padding:15px;background:var(--green);color:#fff;border:none;border-radius:var(--rsm);font-size:16px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:6px;}
 .btn-primary:active{opacity:.8;}
@@ -194,8 +195,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <div class="field"><label>Hora</label><input type="time" id="in-hora"></div>
       </div>
       <div class="row2">
-        <div class="field"><label>Litros</label><input type="number" id="in-litros" placeholder="56.00" step="0.01" min="0" inputmode="decimal"></div>
-        <div class="field"><label>Preço / litro (R$)</label><input type="number" id="in-preco" placeholder="7.79" step="0.01" min="0" inputmode="decimal"></div>
+        <div class="field"><label>Litros</label><input type="number" id="in-litros" placeholder="quanto abasteceu" step="0.01" min="0" inputmode="decimal"></div>
+        <div class="field"><label>Preço / litro (R$)</label><input type="number" id="in-preco" placeholder="7.79" step="0.01" min="0" inputmode="decimal" oninput="this.classList.remove('herdado')"></div>
       </div>
       <div class="row2">
         <div class="field"><label>KM atual</label><input type="number" id="in-km" placeholder="62633" min="0" inputmode="numeric"></div>
@@ -356,7 +357,7 @@ const app=initializeApp(firebaseConfig);
 const auth=initializeAuth(app,{persistence:indexedDBLocalPersistence,popupRedirectResolver:browserPopupRedirectResolver});
 const db=getFirestore(app);
 const googleProvider=new GoogleAuthProvider();
-const APP_VERSION=document.documentElement.dataset.appVersion||'3.1';
+const APP_VERSION=document.documentElement.dataset.appVersion||'3.3';
 const AVG_CONS=8.2;
 const NOMES_MES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const CENTROS_CUSTO=[
@@ -548,7 +549,9 @@ async function iniciarApp(user){
 
   unsubAbast=onSnapshot(query(collection(db,'users',uid,'abastecimentos'),orderBy('km')),snap=>{
     records=snap.docs.map(d=>({...d.data(),_docId:d.id}));
-    preencherUltimoAbastecimento();
+    // só repõe os herdados se ele ainda não começou a lançar, senão um sync limpa o que está digitando
+    const emEdicao=document.getElementById('in-litros').value||document.getElementById('in-km').value;
+    if(!emEdicao)preencherUltimoAbastecimento();
     if(document.getElementById('sec-historico').style.display!=='none'){buildFilters();renderHist();}
     if(document.getElementById('sec-stats').style.display!=='none')renderStats();
   });
@@ -583,8 +586,9 @@ function getUltimoAbastecimento(){
   return [...records].filter(r=>r&&r.data).sort(sortByDateTimeDesc)[0]||[...records].sort((a,b)=>(b.km||0)-(a.km||0))[0]||null;
 }
 
-function preencherUltimoAbastecimento(){
-  const ultimo=getUltimoAbastecimento();
+// `base` permite reaproveitar o que acabou de ser salvo, sem esperar o snapshot voltar
+function preencherUltimoAbastecimento(base){
+  const ultimo=base||getUltimoAbastecimento();
   if(!ultimo)return;
   const litrosEl=document.getElementById('in-litros');
   const precoEl=document.getElementById('in-preco');
@@ -592,12 +596,21 @@ function preencherUltimoAbastecimento(){
   const postoEl=document.getElementById('in-posto');
   const veicEl=document.getElementById('in-veiculo');
   const kmEl=document.getElementById('in-km');
-  if(litrosEl&&ultimo.litros!=null)litrosEl.value=Number(ultimo.litros).toFixed(2);
-  if(precoEl&&ultimo.preco!=null)precoEl.value=Number(ultimo.preco).toFixed(2);
+  // litros nunca herda: é o que mais muda de um abastecimento para o outro e confundia o lançamento
+  if(litrosEl)litrosEl.value='';
+  // preço herda o último, mas acinzentado até ele encostar no campo (o oninput tira a classe)
+  if(precoEl&&ultimo.preco!=null){
+    precoEl.value=Number(ultimo.preco).toFixed(2);
+    precoEl.classList.add('herdado');
+  }
   if(tipoEl)tipoEl.value=ultimo.tipo||'Diesel';
   if(postoEl)postoEl.value=ultimo.posto||'';
   if(veicEl&&ultimo.veiculo)veicEl.value=ultimo.veiculo;
-  if(kmEl)kmEl.value='';
+  // KM continua vazio para não salvar odômetro velho; o último fica de marca d'água, só como referência
+  if(kmEl){
+    kmEl.value='';
+    kmEl.placeholder=(ultimo.km!=null&&!isNaN(Number(ultimo.km)))?'Último: '+Number(ultimo.km).toLocaleString('pt-BR'):'';
+  }
 }
 
 function getRecordsComConsumoAtualizado(){
@@ -644,12 +657,7 @@ window.salvarAbast=async()=>{
   const nn=new Date();
   document.getElementById('in-data').value=nn.toISOString().split('T')[0];
   document.getElementById('in-hora').value=nn.toTimeString().slice(0,5);
-  document.getElementById('in-litros').value=litros.toFixed(2);
-  document.getElementById('in-preco').value=preco.toFixed(2);
-  document.getElementById('in-tipo').value=tipo;
-  document.getElementById('in-posto').value=posto;
-  document.getElementById('in-veiculo').value=veiculoSel;
-  document.getElementById('in-km').value='';
+  preencherUltimoAbastecimento({preco,tipo,posto,veiculo:veiculoSel,km});
 };
 
 window.setTipo=t=>{
