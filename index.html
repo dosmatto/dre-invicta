@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-app-version="3.1">
+<html lang="pt-BR" data-app-version="3.2">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -97,6 +97,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .tipo-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
 .tipo-btn{padding:12px;border-radius:var(--rsm);border:1.5px solid var(--border2);background:var(--surface);color:var(--text2);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;text-align:center;}
 .tipo-btn.active{border-color:var(--green);color:var(--green);background:var(--green-bg);}
+.tipo-btn.cc-consultoria.active{border-color:#2563EB;color:#1d4ed8;background:#eaf1ff;}
 .toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(20px);background:#1a1a1a;color:#fff;padding:11px 22px;border-radius:99px;font-size:14px;font-weight:500;opacity:0;transition:all .3s;pointer-events:none;white-space:nowrap;z-index:999;}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 .empty{text-align:center;padding:48px 20px;color:var(--text3);font-size:14px;}
@@ -257,6 +258,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           <button class="tipo-btn active" id="btn-inicial" onclick="setTipo('inicial')">🌅 Inicial (saída)</button>
           <button class="tipo-btn" id="btn-final" onclick="setTipo('final')">🌆 Final (chegada)</button>
         </div>
+        <div class="field"><label>Centro de custo do dia:</label></div>
+        <div class="tipo-btns">
+          <button class="tipo-btn cc-consultoria active" id="btn-cc-consultoria" onclick="setCentroKm('consultoria')">Consultoria</button>
+          <button class="tipo-btn cc-ap" id="btn-cc-ap" onclick="setCentroKm('ap')">AP</button>
+        </div>
         <button class="btn-primary" onclick="salvarKmDia()">✓ Confirmar e salvar</button>
         <button class="btn-secondary" onclick="resetKmStep()" style="margin-top:8px;">↩ Nova leitura</button>
       </div>
@@ -365,6 +371,7 @@ let despesas=[];
 let veiculos=[];
 let activeFilter='Todos';
 let tipoKm='inicial';
+let centroKm='consultoria';
 let kmLidoFoto=null;
 let c1=null,c2=null,c3=null;
 let unsubAbast=null,unsubKm=null,unsubDesp=null,unsubVeic=null;
@@ -393,6 +400,14 @@ function getCentroCusto(d){
 
 function getCentroInfo(id){
   return CENTROS_CUSTO.find(c=>c.id===id)||CENTROS_CUSTO[0];
+}
+
+// O centro de custo pertence ao DIA (um dia tem no máximo um KM inicial e um final).
+// Vale o registro que tiver centro gravado, com o final na frente; dia antigo sem
+// centro cai no padrão 'consultoria', igual às despesas.
+function getCentroDoDia(ini,fin){
+  const comCentro=[fin,ini].find(r=>r&&r.centroCusto);
+  return getCentroCusto(comCentro||{});
 }
 
 function recorrenciaLabel(d){
@@ -643,6 +658,17 @@ window.setTipo=t=>{
   document.getElementById('btn-final').classList.toggle('active',t==='final');
 };
 
+window.setCentroKm=c=>{
+  centroKm=(c==='ap')?'ap':'consultoria';
+  document.getElementById('btn-cc-consultoria').classList.toggle('active',centroKm==='consultoria');
+  document.getElementById('btn-cc-ap').classList.toggle('active',centroKm==='ap');
+};
+
+function getRegistrosDoDia(data){
+  const doDia=kmRecords.filter(r=>r.data===data);
+  return{ini:doDia.find(r=>r.tipo==='inicial')||null,fin:doDia.find(r=>r.tipo==='final')||null};
+}
+
 window.toggleManual=()=>{
   const el=document.getElementById('km-input-manual');
   el.style.display=el.style.display==='none'?'block':'none';
@@ -658,6 +684,9 @@ window.confirmarManual=()=>{
 function mostrarStep2(km){
   kmLidoFoto=km;
   document.getElementById('km-confirmado').value=km;
+  // se o dia já tem registro, começa no centro que ele já usou, para o 2º lançamento não trocar sem querer
+  const{ini,fin}=getRegistrosDoDia(document.getElementById('km-data').value);
+  setCentroKm((ini||fin)?getCentroDoDia(ini,fin):'consultoria');
   document.getElementById('km-step1').style.display='none';
   document.getElementById('km-step2').style.display='block';
 }
@@ -701,14 +730,18 @@ window.salvarKmDia=async()=>{
   if(!data||!km||km<1000){showToast('⚠️ Informe o KM');return;}
   const existente=kmRecords.find(r=>r.data===data&&r.tipo===tipoKm);
   if(existente)await deleteDoc(doc(db,'users',currentUser.uid,'kmdiario',existente._docId));
-  await addDoc(kmRef(),{data,hora,km,tipo:tipoKm,criadoEm:serverTimestamp()});
-  showToast('✓ KM '+tipoKm+' salvo: '+km.toLocaleString('pt-BR'));
+  await addDoc(kmRef(),{data,hora,km,tipo:tipoKm,centroCusto:centroKm,criadoEm:serverTimestamp()});
+  // o centro é do dia inteiro: alinha o outro registro do mesmo dia para não ficar meio AP, meio Consultoria
+  const irmao=kmRecords.find(r=>r.data===data&&r.tipo!==tipoKm);
+  if(irmao&&getCentroCusto(irmao)!==centroKm)await updateDoc(doc(db,'users',currentUser.uid,'kmdiario',irmao._docId),{centroCusto:centroKm});
+  showToast('✓ KM '+tipoKm+' salvo: '+km.toLocaleString('pt-BR')+' · '+getCentroInfo(centroKm).label);
   mesKmAtual=data.slice(0,7);
   resetKmStep();
   const nn=new Date();
   document.getElementById('km-data').value=nn.toISOString().split('T')[0];
   document.getElementById('km-hora').value=nn.toTimeString().slice(0,5);
   setTipo('inicial');
+  setCentroKm('consultoria');
 };
 
 function renderKmLista(){
@@ -717,10 +750,14 @@ function renderKmLista(){
   const resumo=getKmResumoMes(mesKmAtual);
   if(!resumo.dias.length){el.innerHTML='<div class="empty">Nenhum KM registrado neste mês.</div>';return;}
   el.innerHTML=resumo.dias.map(item=>{
-    const {data:d,ini,fin,rod}=item;
+    const {data:d,ini,fin,rod,centro}=item;
     const[y,m,day]=d.split('-');
+    const ci=getCentroInfo(centro);
     return `<div class="km-box">
-      <div class="km-box-title">${day}/${m}/${y}</div>
+      <div class="km-box-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <span>${day}/${m}/${y}</span>
+        <button onclick="trocarCentroKmDia('${d}')" title="Trocar centro de custo" style="border:none;background:none;padding:0;cursor:pointer;font-family:inherit;"><span class="cc-badge ${ci.id==='consultoria'?'consultoria':''}">${ci.label} ⇄</span></button>
+      </div>
       <div class="km-row">
         <span class="km-row-label">KM Inicial</span>
         <span style="display:flex;align-items:center;gap:8px;">
@@ -739,6 +776,7 @@ function renderKmLista(){
       <button onclick="delKmDia('${d}')" style="margin-top:8px;font-size:12px;color:var(--text3);background:none;border:none;cursor:pointer;">× excluir dia</button>
     </div>`;
   }).join('')+`<div class="km-box" style="border-color:var(--green);">
+    ${CENTROS_CUSTO.map(c=>`<div class="km-row"><span class="km-row-label">${c.label}</span><span class="km-row-val" style="color:${c.cor}">${(resumo.porCentro[c.id]||0).toLocaleString('pt-BR')} km</span></div>`).join('')}
     <div class="km-row"><span class="km-row-label" style="font-weight:700;">TOTAL KM RODADOS NO MÊS</span><span class="km-row-val km-total">${resumo.total.toLocaleString('pt-BR')} km</span></div>
   </div>`;
 }
@@ -765,10 +803,14 @@ function getKmResumoMes(mes){
     const ini=byDay[d].inicial||null;
     const fin=byDay[d].final||null;
     const rod=(ini&&fin)?Math.max(0,fin.km-ini.km):null;
-    return{data:d,ini,fin,rod};
+    return{data:d,ini,fin,rod,centro:getCentroDoDia(ini,fin)};
   });
   const total=dias.reduce((a,d)=>a+(d.rod||0),0);
-  return{dias,total};
+  const porCentro=CENTROS_CUSTO.reduce((acc,c)=>{
+    acc[c.id]=dias.filter(d=>d.centro===c.id).reduce((a,d)=>a+(d.rod||0),0);
+    return acc;
+  },{});
+  return{dias,total,porCentro};
 }
 
 window.editarKmDia=async(data,tipo,valorAtual)=>{
@@ -778,8 +820,21 @@ window.editarKmDia=async(data,tipo,valorAtual)=>{
   if(!v||v<1000){showToast('⚠️ KM inválido');return;}
   const existente=kmRecords.find(r=>r.data===data&&r.tipo===tipo);
   if(existente)await updateDoc(doc(db,'users',currentUser.uid,'kmdiario',existente._docId),{km:v});
-  else await addDoc(kmRef(),{data,hora:new Date().toTimeString().slice(0,5),km:v,tipo,criadoEm:serverTimestamp()});
+  else{
+    const{ini,fin}=getRegistrosDoDia(data);
+    await addDoc(kmRef(),{data,hora:new Date().toTimeString().slice(0,5),km:v,tipo,centroCusto:getCentroDoDia(ini,fin),criadoEm:serverTimestamp()});
+  }
   showToast('✓ KM atualizado');
+};
+
+window.trocarCentroKmDia=async data=>{
+  const{ini,fin}=getRegistrosDoDia(data);
+  if(!ini&&!fin)return;
+  const novo=getCentroDoDia(ini,fin)==='ap'?'consultoria':'ap';
+  for(const r of [ini,fin]){
+    if(r)await updateDoc(doc(db,'users',currentUser.uid,'kmdiario',r._docId),{centroCusto:novo});
+  }
+  showToast('✓ Dia marcado como '+getCentroInfo(novo).label);
 };
 
 window.delKmDia=async data=>{
@@ -791,16 +846,18 @@ window.delKmDia=async data=>{
 window.exportarKmCSV=()=>{
   const resumo=getKmResumoMes(mesKmAtual);
   if(!resumo.dias.length){showToast('Nenhum KM para exportar');return;}
-  let csv='DATA;KM INICIAL;KM FINAL;KM RODADOS\n';
+  let csv='DATA;CENTRO DE CUSTO;KM INICIAL;KM FINAL;KM RODADOS\n';
   resumo.dias.forEach(item=>{
     const d=item.data;
     const ini=item.ini?item.ini.km:'';
     const fin=item.fin?item.fin.km:'';
     const rod=item.rod||0;
     const[y,m,day]=d.split('-');
-    csv+=`${day}/${m}/${y};${ini};${fin};${rod||''}\n`;
+    csv+=`${day}/${m}/${y};${getCentroInfo(item.centro).label};${ini};${fin};${rod||''}\n`;
   });
-  csv+=`\nTOTAL;;;${resumo.total}\n`;
+  csv+='\n';
+  CENTROS_CUSTO.forEach(c=>{csv+=`TOTAL ${c.label};;;;${resumo.porCentro[c.id]||0}\n`;});
+  csv+=`TOTAL GERAL;;;;${resumo.total}\n`;
   downloadCSV(csv,'KM_'+mesKmAtual+'.csv');
 };
 
@@ -813,9 +870,11 @@ window.exportarKmPDF=()=>{
   const pendentes=resumo.dias.length-completos;
   const linhas=resumo.dias.map((item,idx)=>{
     const[yy,mm,dd]=item.data.split('-');
+    const ci=getCentroInfo(item.centro);
     return`<div class="km-report-line">
       <div class="idx">${String(idx+1).padStart(2,'0')}</div>
       <div class="date">${dd}/${mm}/${yy}</div>
+      <div class="cc-pill" style="background:${ci.bg};color:${ci.cor}">${ci.label}</div>
       <div class="cell"><span>Inicial</span><strong>${item.ini?item.ini.km.toLocaleString('pt-BR'):'—'}</strong></div>
       <div class="cell"><span>Final</span><strong>${item.fin?item.fin.km.toLocaleString('pt-BR'):'—'}</strong></div>
       <div class="total">${item.rod!==null?item.rod.toLocaleString('pt-BR')+' km':'Pendente'}</div>
@@ -834,15 +893,16 @@ window.exportarKmPDF=()=>{
     h1{font-size:30px;line-height:1.05;margin:0 0 8px;font-weight:850;}
     .sub{color:#c7d6d0;font-size:12px;}
     .period{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:800;white-space:nowrap;}
-    .summary{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:10px;margin-bottom:18px;}
+    .summary{display:grid;grid-template-columns:1.4fr 1fr 1fr .8fr .8fr;gap:10px;margin-bottom:18px;}
     .card{border:1px solid #e3e8e5;border-radius:14px;padding:14px;background:#fff;}
     .card.primary{background:#e8f7f1;border-color:#bfe6d7;}
     .label{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#6b756f;font-weight:850;margin-bottom:6px;}
     .value{font-size:19px;font-weight:900;color:#111b17;white-space:nowrap;}
     .primary .value{font-size:23px;color:#0f6e56;}
     .km-table{border:1px solid #e5e9e7;border-radius:16px;overflow:hidden;background:#fff;}
-    .km-head{display:grid;grid-template-columns:42px 110px 1fr 1fr 120px;gap:10px;background:#f7faf8;color:#64716a;padding:10px 14px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;font-weight:900;}
-    .km-report-line{display:grid;grid-template-columns:42px 110px 1fr 1fr 120px;gap:10px;align-items:center;padding:12px 14px;border-top:1px solid #edf1ef;page-break-inside:avoid;}
+    .km-head{display:grid;grid-template-columns:42px 96px 104px 1fr 1fr 110px;gap:10px;background:#f7faf8;color:#64716a;padding:10px 14px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;font-weight:900;}
+    .km-report-line{display:grid;grid-template-columns:42px 96px 104px 1fr 1fr 110px;gap:10px;align-items:center;padding:12px 14px;border-top:1px solid #edf1ef;page-break-inside:avoid;}
+    .cc-pill{border-radius:999px;padding:5px 8px;text-align:center;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.06em;}
     .idx{width:28px;height:28px;border-radius:8px;background:#eef2f0;color:#65716b;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;}
     .date{font-size:12px;font-weight:850;color:#17201c;}
     .cell{background:#f7f9f8;border:1px solid #edf1ef;border-radius:10px;padding:8px 10px;}
@@ -863,12 +923,12 @@ window.exportarKmPDF=()=>{
     </section>
     <section class="summary">
       <div class="card primary"><div class="label">Total rodado</div><div class="value">${resumo.total.toLocaleString('pt-BR')} km</div></div>
+      ${CENTROS_CUSTO.map(c=>`<div class="card"><div class="label">${c.label}</div><div class="value" style="color:${c.cor}">${(resumo.porCentro[c.id]||0).toLocaleString('pt-BR')} km</div></div>`).join('')}
       <div class="card"><div class="label">Dias registrados</div><div class="value">${resumo.dias.length}</div></div>
-      <div class="card"><div class="label">Dias completos</div><div class="value">${completos}</div></div>
       <div class="card"><div class="label">Pendentes</div><div class="value">${pendentes}</div></div>
     </section>
     <section class="km-table">
-      <div class="km-head"><span>#</span><span>Data</span><span>KM inicial</span><span>KM final</span><span>Total</span></div>
+      <div class="km-head"><span>#</span><span>Data</span><span>Centro</span><span>KM inicial</span><span>KM final</span><span>Total</span></div>
       ${linhas}
     </section>
     <div class="footer"><span>Relatório gerado pelo app DRE Invicta</span><span>${nomeMes}</span></div>
@@ -1268,30 +1328,27 @@ window.exportarDespesasPDF=async()=>{
   const totalGeral=doMes.reduce((a,d)=>a+d.valor,0);
   const totalReembolso=(totals.pedagio||0)+(totals.part||0);
   const totalCorp=totals.corp||0;
-  const kmDoMes=kmRecords.filter(r=>r.data&&r.data.startsWith(mesDespesaAtual));
-  const kmByDay={};
-  kmDoMes.forEach(r=>{if(!kmByDay[r.data])kmByDay[r.data]={};kmByDay[r.data][r.tipo]=r;});
-  const kmDias=Object.keys(kmByDay).sort().map(d=>{
-    const ini=kmByDay[d].inicial||null;
-    const fin=kmByDay[d].final||null;
-    const rod=(ini&&fin)?Math.max(0,fin.km-ini.km):null;
-    return{data:d,ini,fin,rod};
-  });
-  const totalKm=kmDias.reduce((a,d)=>a+(d.rod||0),0);
+  const resumoKm=getKmResumoMes(mesDespesaAtual);
+  const kmDias=resumoKm.dias;
+  const totalKm=resumoKm.total;
   const kmRows=kmDias.map(d=>{
     const[yy,mm,dd]=d.data.split('-');
+    const ci=getCentroInfo(d.centro);
     return`<div class="km-report-row">
       <div class="km-date">${dd}/${mm}/${yy}</div>
+      <div class="km-cc" style="background:${ci.bg};color:${ci.cor}">${ci.label}</div>
       <div class="km-cell"><span>Inicial</span><strong>${d.ini?d.ini.km.toLocaleString('pt-BR'):'—'}</strong></div>
       <div class="km-cell"><span>Final</span><strong>${d.fin?d.fin.km.toLocaleString('pt-BR'):'—'}</strong></div>
       <div class="km-total-cell">${d.rod!==null?d.rod.toLocaleString('pt-BR')+' km':'—'}</div>
     </div>`;
   }).join('');
+  const kmPorCentroLinha=CENTROS_CUSTO.map(c=>`<span style="color:${c.cor};font-weight:800;">${c.label}: ${(resumoKm.porCentro[c.id]||0).toLocaleString('pt-BR')} km</span>`).join('<span style="color:#94a3b8;"> · </span>');
   const kmSection=`<section class="category-card km-card">
     <div class="category-head" style="border-color:#475569">
       <div>
         <div class="category-kicker" style="color:#475569">Quilometragem do período</div>
         <h2>KM por dia</h2>
+        <div style="font-size:11px;margin-top:4px;">${kmPorCentroLinha}</div>
       </div>
       <div class="category-total" style="background:#EEF2F7;color:#334155">${totalKm.toLocaleString('pt-BR')} km</div>
     </div>
@@ -1381,9 +1438,10 @@ window.exportarDespesasPDF=async()=>{
     .receipt-img{width:58px;height:58px;object-fit:cover;border-radius:10px;border:1px solid #d9dfdc;}
     .receipt-empty{width:58px;height:58px;border-radius:10px;border:1px dashed #cbd3cf;color:#9aa39e;display:flex;align-items:center;justify-content:center;text-align:center;font-size:8px;text-transform:uppercase;font-weight:800;}
     .km-list{padding:8px 14px 14px;}
-    .km-report-row{display:grid;grid-template-columns:110px 1fr 1fr 110px;gap:10px;align-items:center;border-bottom:1px solid #eef1ef;padding:10px 0;}
+    .km-report-row{display:grid;grid-template-columns:100px 100px 1fr 1fr 104px;gap:10px;align-items:center;border-bottom:1px solid #eef1ef;padding:10px 0;}
     .km-report-row:last-child{border-bottom:none;}
     .km-date{font-size:12px;font-weight:850;color:#17201c;}
+    .km-cc{border-radius:999px;padding:5px 8px;text-align:center;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.06em;}
     .km-cell{background:#f7f9f8;border:1px solid #edf1ef;border-radius:10px;padding:8px 10px;}
     .km-cell span{display:block;font-size:8px;text-transform:uppercase;letter-spacing:.1em;color:#7a847f;font-weight:800;margin-bottom:2px;}
     .km-cell strong{font-size:12px;color:#17201c;}
