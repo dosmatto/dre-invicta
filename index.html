@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-app-version="3.3">
+<html lang="pt-BR" data-app-version="3.4">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -316,6 +316,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
     <div id="sec-stats" class="section" style="display:none">
       <br>
+      <div class="section-label">Período</div>
+      <div class="filter-row" id="periodo-row"></div>
       <div class="metric-grid" id="metrics-grid"><div class="app-loading" style="grid-column:1/-1"><div class="spinner"></div>Carregando...</div></div>
       <div id="chart-section" style="display:none">
         <div class="section-label">Consumo (km/l)</div>
@@ -334,7 +336,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <button class="btn-primary" onclick="abrirFormVeiculo()" style="margin-top:8px;">+ Adicionar veículo</button>
     </div>
   </div>
-  <div id="app-version-footer" class="app-version-footer">DRE Invicta v3.1</div>
+  <div id="app-version-footer" class="app-version-footer">DRE Invicta v3.4</div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -357,7 +359,7 @@ const app=initializeApp(firebaseConfig);
 const auth=initializeAuth(app,{persistence:indexedDBLocalPersistence,popupRedirectResolver:browserPopupRedirectResolver});
 const db=getFirestore(app);
 const googleProvider=new GoogleAuthProvider();
-const APP_VERSION=document.documentElement.dataset.appVersion||'3.3';
+const APP_VERSION=document.documentElement.dataset.appVersion||'3.4';
 const AVG_CONS=8.2;
 const NOMES_MES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const CENTROS_CUSTO=[
@@ -376,6 +378,13 @@ let centroKm='consultoria';
 let kmLidoFoto=null;
 let c1=null,c2=null,c3=null;
 let unsubAbast=null,unsubKm=null,unsubDesp=null,unsubVeic=null;
+const PERIODOS=[
+  {id:'3m',label:'3 meses',meses:3},
+  {id:'6m',label:'6 meses',meses:6},
+  {id:'12m',label:'1 ano',meses:12},
+  {id:'total',label:'Período total',meses:null}
+];
+let periodoStats='6m';
 let mesKmAtual=new Date().toISOString().slice(0,7);
 let mesDespesaAtual=new Date().toISOString().slice(0,7);
 
@@ -1070,12 +1079,59 @@ window.exportarPDF=()=>{
   printHTML(html);
 };
 
+function getPeriodoInfo(){
+  return PERIODOS.find(p=>p.id===periodoStats)||PERIODOS[1];
+}
+
+// data de corte do período escolhido; null = período total
+function getCorteDoPeriodo(){
+  const meses=getPeriodoInfo().meses;
+  if(!meses)return null;
+  const d=new Date();
+  d.setMonth(d.getMonth()-meses);
+  return d.toISOString().slice(0,10);
+}
+
+function filtrarPorPeriodo(arr){
+  const corte=getCorteDoPeriodo();
+  if(!corte)return arr;
+  return arr.filter(r=>r.data&&r.data>=corte);
+}
+
+function buildPeriodoRow(){
+  const el=document.getElementById('periodo-row');
+  if(!el)return;
+  el.innerHTML=PERIODOS.map(p=>`<button class="fbtn${periodoStats===p.id?' active':''}" onclick="setPeriodoStats('${p.id}')">${p.label}</button>`).join('');
+}
+
+window.setPeriodoStats=id=>{
+  periodoStats=id;
+  buildPeriodoRow();
+  renderStats();
+};
+
+// mantém no máximo `max` pontos, mas o último abastecimento NUNCA sai do gráfico,
+// senão um lançamento novo (com o mesmo preço, por exemplo) não aparece
+function amostrar(arr,max){
+  if(arr.length<=max)return arr;
+  const step=Math.ceil(arr.length/max);
+  const out=arr.filter((_,i)=>i%step===0);
+  if(out[out.length-1]!==arr[arr.length-1])out.push(arr[arr.length-1]);
+  return out;
+}
+
 function renderStats(){
   const grid=document.getElementById('metrics-grid');
   const chartSec=document.getElementById('chart-section');
-  const dados=getRecordsComConsumoAtualizado().sort(sortByDateTimeAsc);
+  buildPeriodoRow();
+  const dados=filtrarPorPeriodo(getRecordsComConsumoAtualizado().sort(sortByDateTimeAsc));
   const wC=dados.filter(r=>r.consumo&&r.consumo<15);
-  if(dados.length<2||!wC.length){grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--text3);font-size:14px;">Poucos registros.</div>';chartSec.style.display='none';return;}
+  if(dados.length<2||!wC.length){
+    const sufixo=getPeriodoInfo().meses?' em '+getPeriodoInfo().label.toLowerCase()+'. Experimente um período maior.':'.';
+    grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--text3);font-size:14px;">Poucos registros'+sufixo+'</div>';
+    chartSec.style.display='none';
+    return;
+  }
   chartSec.style.display='block';
   const tL=dados.reduce((a,r)=>a+(Number(r.litros)||0),0);
   const tG=dados.reduce((a,r)=>a+(Number(r.litros)||0)*(Number(r.preco)||0),0);
@@ -1104,15 +1160,21 @@ function drawCharts(wc,all){
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const tc=isDark?'#888':'#999';
   const gc=isDark?'rgba(255,255,255,.07)':'rgba(0,0,0,.06)';
-  const step=Math.max(1,Math.ceil(wc.length/30));
-  const stepAll=Math.max(1,Math.ceil(all.length/30));
-  const sc=wc.filter((_,i)=>i%step===0);
-  const sa=all.filter((_,i)=>i%stepAll===0);
+  // antes cortava para 30 pontos fixos e o último abastecimento podia cair fora,
+  // então um lançamento novo não aparecia. Agora só afina em período longo e sempre mantém o último.
+  const sc=amostrar(wc,80);
+  const sa=amostrar(all,80);
+  // com o preço estável o eixo fica em passos de centavo e o 'R$'+v cru vazava
+  // ponto flutuante (R$6.800000000000001); daí formatar sempre em pt-BR
+  const eixoPreco=v=>'R$'+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const eixoGasto=v=>'R$'+Number(v).toLocaleString('pt-BR',{maximumFractionDigits:0});
+  // só no período total o dd/mm se repete entre anos; aí o rótulo passa a mm/aa
+  const rotulo=r=>periodoStats==='total'?fmtMesAno(r.data):fmtShort(r.data);
   const opts=(ex={})=>({responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:tc,font:{size:10},maxRotation:45,autoSkip:true,maxTicksLimit:8},grid:{color:gc}},y:{ticks:{color:tc,font:{size:11},...(ex.yt||{})},grid:{color:gc}}}});
   if(c1)c1.destroy();if(c2)c2.destroy();if(c3)c3.destroy();
-  c1=new Chart(document.getElementById('chart1'),{type:'line',data:{labels:sc.map(r=>fmtShort(r.data)),datasets:[{data:sc.map(r=>+r.consumo.toFixed(2)),borderColor:'#1D9E75',backgroundColor:'rgba(29,158,117,.1)',tension:.3,fill:true,pointRadius:2}]},options:opts()});
-  c2=new Chart(document.getElementById('chart2'),{type:'bar',data:{labels:sc.map(r=>fmtShort(r.data)),datasets:[{data:sc.map(r=>+(r.litros*r.preco).toFixed(2)),backgroundColor:'rgba(186,117,23,.7)',borderRadius:3}]},options:opts({yt:{callback:v=>'R$'+v}})});
-  c3=new Chart(document.getElementById('chart3'),{type:'line',data:{labels:sa.map(r=>fmtShort(r.data)),datasets:[{data:sa.map(r=>+r.preco.toFixed(2)),borderColor:'#378ADD',backgroundColor:'rgba(55,138,221,.1)',tension:.3,fill:true,pointRadius:2}]},options:opts({yt:{callback:v=>'R$'+v}})});
+  c1=new Chart(document.getElementById('chart1'),{type:'line',data:{labels:sc.map(rotulo),datasets:[{data:sc.map(r=>+r.consumo.toFixed(2)),borderColor:'#1D9E75',backgroundColor:'rgba(29,158,117,.1)',tension:.3,fill:true,pointRadius:2}]},options:opts()});
+  c2=new Chart(document.getElementById('chart2'),{type:'bar',data:{labels:sc.map(rotulo),datasets:[{data:sc.map(r=>+(r.litros*r.preco).toFixed(2)),backgroundColor:'rgba(186,117,23,.7)',borderRadius:3}]},options:opts({yt:{callback:eixoGasto}})});
+  c3=new Chart(document.getElementById('chart3'),{type:'line',data:{labels:sa.map(rotulo),datasets:[{data:sa.map(r=>+r.preco.toFixed(2)),borderColor:'#378ADD',backgroundColor:'rgba(55,138,221,.1)',tension:.3,fill:true,pointRadius:2}]},options:opts({yt:{callback:eixoPreco}})});
 }
 
 window.showTab=t=>{
@@ -1770,6 +1832,7 @@ function printHTML(html){
 
 function fmtDate(d){if(!d)return'';const[y,m,day]=d.split('-');return`${day}/${m}/${y}`;}
 function fmtShort(d){if(!d)return'';const[,m,day]=d.split('-');return`${day}/${m}`;}
+function fmtMesAno(d){if(!d)return'';const[y,m]=d.split('-');return`${m}/${y.slice(2)}`;}
 function escapeHTML(v){return String(v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 function escapeAttr(v){return escapeHTML(v);}
 function hexToSoftBg(hex){
